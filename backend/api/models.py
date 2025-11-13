@@ -1,3 +1,244 @@
 from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+import uuid
+from django.conf import settings
 
-# Create your models here.
+
+# -------------------------------
+#   Department (מחלקה)
+# -------------------------------
+class Department(models.Model):
+    code = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100, unique=True)
+
+    degree_types = [
+        ("BSC", "Bachelor (First Degree)"),
+        ("MSC", "Master (Second Degree)"),
+    ]
+
+    degree = models.CharField(max_length=20, choices=degree_types, default="BSC")
+    
+    years_of_study = models.IntegerField(default=4)        # נקבע ע"י SUPER ADMIN
+    semesters_per_year = models.IntegerField(default=2)    # נקבע ע"י SUPER ADMIN
+
+    description = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+# -------------------------------
+#   Course (קורס)
+# -------------------------------
+class Course(models.Model):
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=20, unique=True)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+
+    description = models.TextField(null=True, blank=True)
+    credits = models.DecimalField(max_digits=3, decimal_places=1, default=3.0)
+
+    year = models.IntegerField(
+        choices=[(1, "Year 1"), (2, "Year 2"), (3, "Year 3"), (4, "Year 4")],
+        default=1
+    )
+
+    semester_choices = [
+        ("A", "Semester A"),
+        ("B", "Semester B"),
+        ("SUMMER", "Summer Semester")
+    ]
+
+    semester = models.CharField(max_length=10, choices=semester_choices, default="A")
+
+    lecturers = models.ManyToManyField(settings.AUTH_USER_MODEL, limit_choices_to={"role": "LECTURER"})
+
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+
+class Syllabus(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="syllabuses")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    version = models.IntegerField(default=1)
+    content = models.TextField()
+
+    status_choices = [
+        ("PENDING_REVIEW", "Pending Reviewer Approval"),
+        ("PENDING_DEPT", "Pending Department Approval"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    ]
+
+    status = models.CharField(max_length=30, choices=status_choices, default="PENDING_REVIEW")
+
+    reviewer_comment = models.TextField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Syllabus v{self.version} for {self.course.code}"
+
+# -------------------------------
+#   User Manager
+# -------------------------------
+class UserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        """
+        יצירת משתמש רגיל במערכת (לא סופר־אדמין של Django).
+        """
+        if not email:
+            raise ValueError("Email is required")
+
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+
+        if password:
+            user.set_password(password)
+        else:
+            # אפשרות ליצור משתמש בלי סיסמה (למשל לפני קבלת magic link)
+            user.set_unusable_password()
+
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        """
+        SUPERUSER של Django (כניסה ל־/admin) – לא היוזר של ה-CSMS.
+        כאן ניתן לו תפקיד SYSTEM_ADMIN, אבל זה לצורכי ניהול בלבד.
+        """
+        extra_fields.setdefault("role", "SYSTEM_ADMIN")
+        extra_fields.setdefault("status", "APPROVED")
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+
+        return self.create_user(email, password, **extra_fields)
+
+
+# -------------------------------
+#   User (כל המשתמשים במערכת)
+# -------------------------------
+class User(AbstractBaseUser, PermissionsMixin):
+
+    ROLES = [
+        ("SYSTEM_ADMIN", "System Admin"),         # נוצר מהקוד / ייחודי
+        ("DEPARTMENT_ADMIN", "Department Admin"),
+        ("REVIEWER", "Reviewer"),
+        ("LECTURER", "Lecturer"),
+        ("STUDENT", "Student"),
+    ]
+
+    STATUS = [
+        ("PENDING", "Pending"),     # מחכה לאישור
+        ("APPROVED", "Approved"),   # מאושר ויכול להתחבר
+        ("REJECTED", "Rejected"),   # נדחה
+    ]
+
+    # שדות בסיס
+    email = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=40)
+    last_name = models.CharField(max_length=40)
+    role = models.CharField(max_length=20, choices=ROLES)
+    status = models.CharField(max_length=20, choices=STATUS, default="PENDING")
+
+    # פרטים לפי תפקיד
+    # למחלקה אחת (לסטודנט / מרצה / אדמין / רוויוער)
+    department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
+
+    # לסטודנטים
+    study_year = models.IntegerField(null=True, blank=True)
+
+    # למרצים – אילו קורסים הוא מלמד
+    courses = models.ManyToManyField(Course, blank=True)
+
+    # שדות ניהול של Django
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+
+    objects = UserManager()
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["first_name", "last_name"]
+
+    def __str__(self):
+        return f"{self.email} ({self.role})"
+
+
+# -------------------------------
+#   SignupRequest (בקשת הרשמה)
+# -------------------------------
+class SignupRequest(models.Model):
+
+    ROLES = [
+        ("DEPARTMENT_ADMIN", "Department Admin"),
+        ("REVIEWER", "Reviewer"),
+        ("LECTURER", "Lecturer"),
+        ("STUDENT", "Student"),
+    ]
+
+    email = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=40)
+    last_name = models.CharField(max_length=40)
+    role = models.CharField(max_length=20, choices=ROLES)
+
+    # המחלקה שייכת לכולם
+    department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
+
+    # STUDENT בלבד
+    study_year = models.IntegerField(null=True, blank=True)
+
+    student_semester = models.CharField(
+        max_length=10,
+        choices=[
+            ("A", "Semester A"),
+            ("B", "Semester B"),
+            ("SUMMER", "Summer Semester")
+        ],
+        null=True,
+        blank=True
+    )
+
+    # LECTURER בלבד
+    selected_courses = models.ManyToManyField(Course, blank=True)
+
+    # REVIEWER בלבד
+    reviewer_department = models.ForeignKey(
+        Department,
+        related_name="reviewer_department",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+
+    STATUS = [
+        ("PENDING", "Pending Approval"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS, default="PENDING")
+    rejection_reason = models.TextField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+    def __str__(self):
+        return f"Signup: {self.email} ({self.role})"
+
+
+# -------------------------------
+#   MagicLink (קישור חד-פעמי)
+# -------------------------------
+class MagicLink(models.Model):
+    """
+    אחרי שהבקשה אושרה – שולחים Magic Link למייל.
+    דרכו המשתמש יגדיר סיסמה ויאקטב את החשבון.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"MagicLink for {self.user.email}"
