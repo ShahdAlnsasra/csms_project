@@ -103,18 +103,15 @@ class UserManager(BaseUserManager):
 
         user.save(using=self._db)
         return user
+    def create_superuser(self, email, password, **extra_fields):
+      extra_fields.setdefault("is_staff", True)
+      extra_fields.setdefault("is_superuser", True)
+      extra_fields.setdefault("role", None)
+      return self.create_user(email, password, **extra_fields)
 
-    def create_superuser(self, email, password=None, **extra_fields):
-        """
-        SUPERUSER של Django (כניסה ל־/admin) – לא היוזר של ה-CSMS.
-        כאן ניתן לו תפקיד SYSTEM_ADMIN, אבל זה לצורכי ניהול בלבד.
-        """
-        extra_fields.setdefault("role", "SYSTEM_ADMIN")
-        extra_fields.setdefault("status", "APPROVED")
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
 
-        return self.create_user(email, password, **extra_fields)
+
+ 
 
 
 # -------------------------------
@@ -138,9 +135,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # שדות בסיס
     email = models.EmailField(unique=True)
-    first_name = models.CharField(max_length=40)
-    last_name = models.CharField(max_length=40)
-    role = models.CharField(max_length=20, choices=ROLES)
+    first_name = models.CharField(max_length=40, default="", blank=True)
+    last_name = models.CharField(max_length=40, default="", blank=True)
+    role = models.CharField(
+    max_length=20,
+    choices=ROLES,
+    null=True,
+    blank=True)
     status = models.CharField(max_length=20, choices=STATUS, default="PENDING")
 
     # פרטים לפי תפקיד
@@ -160,7 +161,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["first_name", "last_name"]
+    REQUIRED_FIELDS = []
 
     def __str__(self):
         return f"{self.email} ({self.role})"
