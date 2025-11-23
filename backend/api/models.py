@@ -143,6 +143,12 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # שדות בסיס
     email = models.EmailField(unique=True)
+    username = models.CharField(
+        max_length=40,
+        unique=True,
+        null=True,
+        blank=True,
+    )
     first_name = models.CharField(max_length=40, default="", blank=True)
     last_name = models.CharField(max_length=40, default="", blank=True)
     role = models.CharField(
@@ -179,7 +185,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 #   SignupRequest (בקשת הרשמה)
 # -------------------------------
 class SignupRequest(models.Model):
-
     ROLES = [
         ("DEPARTMENT_ADMIN", "Department Admin"),
         ("REVIEWER", "Reviewer"),
@@ -192,10 +197,8 @@ class SignupRequest(models.Model):
     last_name = models.CharField(max_length=40)
     role = models.CharField(max_length=20, choices=ROLES)
 
-    # המחלקה שייכת לכולם
     department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
 
-    # STUDENT בלבד
     study_year = models.IntegerField(null=True, blank=True)
 
     student_semester = models.CharField(
@@ -209,10 +212,8 @@ class SignupRequest(models.Model):
         blank=True
     )
 
-    # LECTURER בלבד
     selected_courses = models.ManyToManyField(Course, blank=True)
 
-    # REVIEWER בלבד
     reviewer_department = models.ForeignKey(
         Department,
         related_name="reviewer_department",
@@ -231,10 +232,15 @@ class SignupRequest(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+      # ✅ NEW: email verification fields
+    email_verification_code = models.CharField(max_length=10, null=True, blank=True)
+    email_verified = models.BooleanField(default=False)
+
+    # NEW – to avoid sending multiple emails when status is edited
+    magic_link_sent = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Signup: {self.email} ({self.role})"
-
 
 # -------------------------------
 #   MagicLink (קישור חד-פעמי)

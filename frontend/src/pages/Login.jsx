@@ -50,17 +50,19 @@ export default function Login() {
         <form className="space-y-6" onSubmit={handleSubmit}>
           {/* Username or Email */}
           <div>
-            <label className="block mb-2 text-white/90 font-medium">
-              Email
-            </label>
-            <input
-              type="text"
-              className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/60 focus:ring-2 focus:ring-pink-300 outline-none"
-              placeholder="Enter your email"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-            />
-          </div>
+          <label className="block mb-2 text-white/90 font-medium">
+            Username or Email
+         </label>
+         <input
+          type="text"
+          autoComplete="username"
+          className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/60 focus:ring-2 focus:ring-pink-300 outline-none"
+          placeholder="Enter your username or email"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+         />
+        </div>
+
 
           {/* Password */}
           <div>

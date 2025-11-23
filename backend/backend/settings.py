@@ -28,6 +28,7 @@ DEBUG = True
 ALLOWED_HOSTS = []
 
 
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -37,8 +38,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
-    # הוסיפי את אלה:
     'rest_framework',
     'corsheaders',
     'api.apps.ApiConfig',
@@ -48,10 +47,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-
-  # הוסיפי כאן 👇
     'corsheaders.middleware.CorsMiddleware',
-
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -106,6 +102,7 @@ EMAIL_HOST_USER = "csms2026@gmail.com"
 EMAIL_HOST_PASSWORD = "wpdj ccpy olfh fuqb"  
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
+FRONTEND_BASE_URL = "http://localhost:3000"
 
 
 # Password validation
