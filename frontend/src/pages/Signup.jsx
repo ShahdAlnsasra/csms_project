@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import CustomSelect from "../components/CustomSelectGradient";
-import { fetchRoles, fetchDepartments, signup } from "../api/api"; // <--- add signup
+import { fetchRoles, fetchDepartments, signup } from "../api/api";
 import { useNavigate } from "react-router-dom";
 
 export default function Signup() {
   const navigate = useNavigate();
+
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -22,37 +23,42 @@ export default function Signup() {
   const [yearOptions, setYearOptions] = useState([]);
   const [semesterOptions, setSemesterOptions] = useState([]);
 
-  const [loading, setLoading] = useState(false);      // <---
-  const [error, setError] = useState("");             // <---
-  const [success, setSuccess] = useState("");         // <---
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleChange = (name, value) => {
     console.log("changing:", name, value);
-    setForm((prev) => ({ ...prev, [name]: value }));
 
-    if (name === "department") {
-      setYearOptions([]);
-      setSemesterOptions([]);
-      setForm((prev) => ({
-        ...prev,
-        studyYear: "",
-        semester: "",
-      }));
-    }
+    // Normalize { value, label } -> value (from CustomSelect)
+    const actualValue =
+      value && typeof value === "object" && "value" in value
+        ? value.value
+        : value;
 
-    if (name === "role" && value !== "STUDENT") {
-      setForm((prev) => ({
-        ...prev,
-        studyYear: "",
-        semester: "",
-      }));
-    }
+    setForm((prev) => {
+      const updated = { ...prev, [name]: actualValue };
+
+      if (name === "department") {
+        updated.department = actualValue;
+        updated.studyYear = "";
+        updated.semester = "";
+      }
+
+      if (name === "role" && actualValue !== "STUDENT") {
+        updated.role = actualValue;
+        updated.studyYear = "";
+        updated.semester = "";
+      }
+
+      return updated;
+    });
   };
 
   const inputStyle =
     "w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/60 focus:ring-2 focus:ring-pink-300 outline-none";
 
-  // load roles + departments
+  // Load roles + departments
   useEffect(() => {
     async function loadInitial() {
       try {
@@ -78,7 +84,7 @@ export default function Signup() {
     loadInitial();
   }, []);
 
-  // compute year + semester when department changes
+  // Compute year + semester when department changes
   useEffect(() => {
     if (!form.department) {
       setYearOptions([]);
@@ -113,29 +119,103 @@ export default function Signup() {
   }, [form.department, departments]);
 
   // --- handle submit ---
-  async function handleSubmit(e) {
-  e.preventDefault();
-  setError("");
-  setSuccess("");
-  setLoading(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
 
-  try {
-    const res = await signup(form);
-    console.log("Signup success:", res);
+    // Trim values
+    const firstName = (form.firstName || "").trim();
+    const lastName = (form.lastName || "").trim();
+    const email = (form.email || "").trim();
+    const phone = (form.phone || "").trim();
+    const role = form.role;
+    const department = form.department;
+    const studyYear = form.studyYear;
+    const semester = form.semester;
 
-    // 👉 go to verification page with email in the URL
-    navigate(`/verify-email?email=${encodeURIComponent(form.email)}`);
-  } catch (err) {
-    console.error("Signup failed:", err);
-    const msg =
-      err.response?.data?.detail ||
-      "Signup failed. Please check your details and try again.";
-    setError(msg);
-  } finally {
-    setLoading(false);
-  }
-}
+    // Regex rules
+    const nameRegex = /^[A-Za-z]+$/; // only English letters
+    const phoneRegex = /^[0-9]+$/; // only digits
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // basic email
 
+    // 1. Required fields for everyone
+    if (!firstName || !lastName || !email || !phone || !role) {
+      setLoading(false);
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    // 2. Department must be selected
+    if (!department) {
+      setLoading(false);
+      setError("Please select a department.");
+      return;
+    }
+
+    // 3. For STUDENT → require year + semester
+    if (role === "STUDENT") {
+      if (!studyYear || !semester) {
+        setLoading(false);
+        setError("Study year and semester are required for students.");
+        return;
+      }
+    }
+
+    // 4. Validate first / last name (only letters)
+    if (!nameRegex.test(firstName)) {
+      setLoading(false);
+      setError("First name must contain only English letters (A–Z).");
+      return;
+    }
+
+    if (!nameRegex.test(lastName)) {
+      setLoading(false);
+      setError("Last name must contain only English letters (A–Z).");
+      return;
+    }
+
+    // 5. Validate email format
+    if (!emailRegex.test(email)) {
+      setLoading(false);
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    // 6. Validate phone digits only
+    if (!phoneRegex.test(phone)) {
+      setLoading(false);
+      setError("Phone number must contain digits only.");
+      return;
+    }
+
+    try {
+      // Send camelCase object – api.js will convert to snake_case
+      const res = await signup({
+        firstName,
+        lastName,
+        email,
+        phone,
+        role,
+        department,
+        studyYear,
+        semester,
+      });
+
+      console.log("Signup success:", res);
+      // Optional: setSuccess("Signup successful! Please check your email.");
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+    } catch (err) {
+      console.error("Signup failed:", err);
+      const msg =
+        err.response?.data?.detail ||
+        "Signup failed. Please check your details and try again.";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#4e488a] via-[#5e59b7] via-[#b28dd6] to-[#d946ef] relative overflow-hidden">
@@ -173,6 +253,7 @@ export default function Signup() {
                 Last Name
               </label>
               <input
+                type="text"
                 placeholder="Enter your last name"
                 className={inputStyle}
                 value={form.lastName}
@@ -188,6 +269,7 @@ export default function Signup() {
                 Email
               </label>
               <input
+                type="email"
                 placeholder="Enter your email"
                 className={inputStyle}
                 value={form.email}
@@ -200,6 +282,7 @@ export default function Signup() {
                 Phone Number
               </label>
               <input
+                type="tel"
                 placeholder="Enter your phone number"
                 className={inputStyle}
                 value={form.phone}

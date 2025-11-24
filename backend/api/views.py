@@ -5,12 +5,19 @@ from rest_framework.response import Response
 from .models import Department, SignupRequest
 from django.contrib.auth import authenticate
 from rest_framework import status
-
+import re
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from .models import  SignupRequest, MagicLink, User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import Department
 from .serializers import DepartmentSerializer
+from django.utils import timezone
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 
 
 
@@ -21,96 +28,6 @@ class DepartmentList(APIView):
         departments = Department.objects.all()
         serializer = DepartmentSerializer(departments, many=True)
         return Response(serializer.data)
-
-# ------------------
-#   DEPARTMENTS API
-# ------------------
-# @api_view(['GET'])
-# def get_departments(request):
-#     depts = Department.objects.all()
-#     serializer = DepartmentSerializer(depts, many=True)
-#     return Response(serializer.data)
-
-
-
-@api_view(['POST'])
-def signup_request_create(request):
-    """
-    Create a SignupRequest (pending user account).
-    Expects JSON like:
-    {
-        "first_name": "...",
-        "last_name": "...",
-        "email": "...",
-        "role": "STUDENT" | "LECTURER" | "REVIEWER" | "DEPARTMENT_ADMIN",
-        "department": 1,        # department id
-        "study_year": 2         # optional, only for STUDENT
-    }
-    """
-    data = request.data
-
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
-    email = data.get("email")
-    role = data.get("role")
-    department_id = data.get("department")
-    study_year = data.get("study_year")
-
-    # basic validation
-    if not all([first_name, last_name, email, role]):
-        return Response(
-            {"detail": "First name, last name, email and role are required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # validate role
-    valid_roles = dict(SignupRequest.ROLES).keys()
-    if role not in valid_roles:
-        return Response(
-            {"detail": "Invalid role."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # department (required for all your signup roles)
-    dept_obj = None
-    if department_id:
-        try:
-            dept_obj = Department.objects.get(id=department_id)
-        except Department.DoesNotExist:
-            return Response(
-                {"detail": "Department not found."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    # create SignupRequest
-    signup = SignupRequest(
-        email=email,
-        first_name=first_name,
-        last_name=last_name,
-        role=role,
-        department=dept_obj,
-    )
-
-    # only for students, store study_year
-    if role == "STUDENT" and study_year:
-        try:
-            signup.study_year = int(study_year)
-        except ValueError:
-            return Response(
-                {"detail": "study_year must be a number."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    signup.save()
-
-    return Response(
-        {
-            "id": signup.id,
-            "status": signup.status,   # will be "PENDING"
-            "role": signup.role,
-        },
-        status=status.HTTP_201_CREATED,
-    )
 
 
 @api_view(['GET'])
@@ -217,19 +134,45 @@ def signup_request_create(request):
     Create a SignupRequest and send an email verification code.
     """
     data = request.data
-
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
-    email = data.get("email")
+    first_name = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    phone = (data.get("phone") or "").strip()
     role = data.get("role")
     department_id = data.get("department")
     study_year = data.get("study_year")
+    semester = data.get("semester")
 
-    if not all([first_name, last_name, email, role]):
+
+ # ---------- Required fields: report exactly what's missing ----------
+    missing = []
+    if not first_name:
+        missing.append("first_name")
+    if not last_name:
+        missing.append("last_name")
+    if not email:
+        missing.append("email")
+    if not phone:
+        missing.append("phone")
+    if not role:
+        missing.append("role")
+    if not department_id:
+        missing.append("department")
+
+    if missing:
         return Response(
-            {"detail": "First name, last name, email and role are required."},
+            {"detail": f"Missing required fields: {', '.join(missing)}"},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+
+
+    # ---------- Required fields ----------
+    if not all([first_name, last_name, email, phone, role, department_id]):
+        return Response(
+            {"detail": "First name, last name, email, phone, role and department are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+    )
 
     valid_roles = dict(SignupRequest.ROLES).keys()
     if role not in valid_roles:
@@ -237,22 +180,67 @@ def signup_request_create(request):
             {"detail": "Invalid role."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    
+     # ---------- Validate email format ----------
+    try:
+        validate_email(email)
+    except ValidationError:
+        return Response(
+            {"detail": "Invalid email format."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-    dept_obj = None
-    if department_id:
-        try:
-            dept_obj = Department.objects.get(id=department_id)
-        except Department.DoesNotExist:
-            return Response(
-                {"detail": "Department not found."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+    # ---------- Email uniqueness ----------
+    if User.objects.filter(email=email).exists() or SignupRequest.objects.filter(email=email).exists():
+        return Response(
+            {"detail": "An account or signup request with this email already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ---------- Validate names: only letters ----------
+    name_regex = re.compile(r'^[A-Za-z]+$')
+    if not name_regex.match(first_name):
+        return Response(
+            {"detail": "First name must contain only English letters (A–Z)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not name_regex.match(last_name):
+        return Response(
+            {"detail": "Last name must contain only English letters (A–Z)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ---------- Validate phone digits only ----------
+    phone_regex = re.compile(r'^[0-9]+$')
+    if not phone_regex.match(phone):
+        return Response(
+            {"detail": "Phone number must contain digits only."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ✅ NEW: phone uniqueness check
+    if User.objects.filter(phone=phone).exists() or SignupRequest.objects.filter(phone=phone).exists():
+        return Response(
+            {"detail": "An account or signup request with this phone number already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+    # ---------- Department (must exist) ----------
+    try:
+        dept_obj = Department.objects.get(id=department_id)
+    except Department.DoesNotExist:
+        return Response(
+            {"detail": "Department not found."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # generate 6-digit verification code
     verification_code = f"{random.randint(0, 999999):06d}"
 
     signup = SignupRequest(
         email=email,
+        phone=phone,
         first_name=first_name,
         last_name=last_name,
         role=role,
@@ -261,14 +249,23 @@ def signup_request_create(request):
         email_verified=False,
     )
 
-    if role == "STUDENT" and study_year:
+   # ---------- STUDENT extra requirements ----------
+    if role == "STUDENT":
+        if not study_year or not semester:
+            return Response(
+                {"detail": "study_year and semester are required for students."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+    if role == "STUDENT":
         try:
             signup.study_year = int(study_year)
-        except ValueError:
+        except (ValueError, TypeError):
             return Response(
                 {"detail": "study_year must be a number."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        signup.student_semester = str(semester)
 
     signup.save()
 
@@ -362,28 +359,38 @@ def activate_with_magic_link(request, token):
     password = request.data.get("password")
     username = request.data.get("username")
 
+    # 1) Password required
     if not password:
         return Response(
             {"detail": "Password is required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # username is optional, but if provided we validate it
+    # 2) Username is optional, but if provided we validate it
     if username:
+        username = username.strip()
+
         # basic validation
         if len(username) < 3:
             return Response(
                 {"detail": "Username must be at least 3 characters long."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if " " in username:
+            return Response(
+                {"detail": "Username cannot contain spaces."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # unique check
-        from .models import User
         if User.objects.filter(username=username).exists():
             return Response(
                 {"detail": "This username is already taken."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    # 3) Get magic link (must exist and not be used yet)
     try:
         magic = MagicLink.objects.get(token=token, is_used=False)
     except MagicLink.DoesNotExist:
@@ -392,12 +399,35 @@ def activate_with_magic_link(request, token):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # 4) Check expiry (if field exists and is set)
+    #    This assumes you added an `expires_at` DateTimeField to MagicLink.
+    if hasattr(magic, "expires_at") and magic.expires_at:
+        if magic.expires_at < timezone.now():
+            return Response(
+                {"detail": "This activation link has expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     user = magic.user
+
+    # 5) Strong password validation (uses Django's password validators)
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as e:
+        # e.messages is a list like ["This password is too short", ...]
+        return Response(
+            {"detail": e.messages},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 6) Save password + username
     user.set_password(password)
     if username:
         user.username = username
+    user.is_active = True
     user.save()
 
+    # 7) Mark magic link as used
     magic.is_used = True
     magic.save(update_fields=["is_used"])
 

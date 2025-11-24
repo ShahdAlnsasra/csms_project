@@ -7,23 +7,60 @@ const API = axios.create({
 });
 
 export default API;
+// export async function signup(form) {
+//   const payload = {
+//     first_name: form.firstName?.trim(),
+//     last_name: form.lastName?.trim(),
+//     email: form.email?.trim(),
+//     phone: form.phone?.trim(),
+//     role: form.role,
+//     department: form.department || null,
+//     study_year:
+//       form.role === "STUDENT" && form.studyYear
+//         ? Number(form.studyYear)
+//         : null,
+//     semester:
+//       form.role === "STUDENT" && form.semester
+//         ? String(form.semester)
+//         : null,
+//   };
+
+//   console.log("signup payload >>>", payload);
+//   const res = await API.post("signup/", payload);
+//   return res.data;
+// }
+
+
+// api.js
+
+
 export async function signup(form) {
   const payload = {
-    first_name: form.firstName,
-    last_name: form.lastName,
-    email: form.email,
+    first_name: (form.firstName || "").trim(),
+    last_name: (form.lastName || "").trim(),
+    email: (form.email || "").trim(),
+    phone: (form.phone || "").trim(),
     role: form.role,
     department: form.department || null,
     study_year:
       form.role === "STUDENT" && form.studyYear
         ? Number(form.studyYear)
         : null,
-    // phone / semester can be added later if you change the model
+    semester:
+      form.role === "STUDENT" && form.semester
+        ? String(form.semester)
+        : null,
   };
+
+  console.log("signup payload >>>", JSON.stringify(payload, null, 2));
 
   const res = await API.post("signup/", payload);
   return res.data;
 }
+
+
+
+
 // ---- ROLES ----
 export async function fetchRoles() {
   const res = await API.get("roles/");

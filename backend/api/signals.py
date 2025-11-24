@@ -5,6 +5,19 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.mail import send_mail
 from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
+from django.utils import timezone
+import uuid
+
+from django.db.models.signals import post_save, post_migrate
+from django.dispatch import receiver
+from django.core.mail import send_mail
+from django.conf import settings
+
+from .models import SignupRequest, User, MagicLink
+
+
 @receiver(post_migrate)
 def create_system_admin(sender, **kwargs):
     if sender.name != "api":
@@ -70,12 +83,13 @@ def handle_signup_approval(sender, instance: SignupRequest, created, **kwargs):
     ):
         return
 
-    # 1) Get or create the User
+    #    # 1) Get or create the User
     try:
         user = User.objects.get(email=instance.email)
-        # Optionally update fields from signup request
+        # Update fields from signup request
         user.first_name = instance.first_name
         user.last_name = instance.last_name
+        user.phone = instance.phone            # ✅ copy phone
         user.role = instance.role
         user.department = instance.department
         if instance.role == "STUDENT":
@@ -87,19 +101,20 @@ def handle_signup_approval(sender, instance: SignupRequest, created, **kwargs):
             email=instance.email,
             first_name=instance.first_name,
             last_name=instance.last_name,
+            phone=instance.phone,             # ✅ copy phone when creating
             role=instance.role,
             department=instance.department,
             study_year=instance.study_year if instance.role == "STUDENT" else None,
             status="APPROVED",
         )
 
+
     # 2) Get or create MagicLink (OneToOne with user)
     magic_link, created_ml = MagicLink.objects.get_or_create(user=user)
-    if not created_ml:
-        # reset existing token if reusing
-        magic_link.token = uuid.uuid4()
-        magic_link.is_used = False
-        magic_link.save()
+    magic_link.token = uuid.uuid4()
+    magic_link.is_used = False
+    magic_link.expires_at = timezone.now() + timedelta(hours=24)  # valid 24h
+    magic_link.save()
 
     # 3) Build frontend activation URL
     base_url = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")

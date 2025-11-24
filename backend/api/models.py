@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import uuid
 from django.conf import settings
-
+from django.utils import timezone
 
 # -------------------------------
 #   Department (מחלקה)
@@ -151,6 +151,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     first_name = models.CharField(max_length=40, default="", blank=True)
     last_name = models.CharField(max_length=40, default="", blank=True)
+    phone = models.CharField(max_length=20, null=True, blank=True)
     role = models.CharField(
     max_length=20,
     choices=ROLES,
@@ -196,7 +197,7 @@ class SignupRequest(models.Model):
     first_name = models.CharField(max_length=40)
     last_name = models.CharField(max_length=40)
     role = models.CharField(max_length=20, choices=ROLES)
-
+    phone = models.CharField(max_length=20, null=True, blank=True)
     department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
 
     study_year = models.IntegerField(null=True, blank=True)
@@ -254,6 +255,11 @@ class MagicLink(models.Model):
     token = models.UUIDField(default=uuid.uuid4, unique=True)
     is_used = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
 
+    def is_expired(self):
+        if self.expires_at is None:
+            return False  # for backwards-compatibility
+        return self.expires_at < timezone.now()
     def __str__(self):
         return f"MagicLink for {self.user.email}"
