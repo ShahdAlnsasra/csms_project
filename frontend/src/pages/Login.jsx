@@ -1,11 +1,14 @@
 import React, { useState } from "react";
 import { login } from "../api/api";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const [identifier, setIdentifier] = useState(""); // email for now
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();   // 👈 להוסיף שורה זו
+
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -13,15 +16,24 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Call backend
-      const user = await login(identifier, password);
+      const trimmedIdentifier = identifier.trim(); // מוריד רווחים בקצה
+
+      // קריאה ל־backend
+      const user = await login(trimmedIdentifier, password);
       console.log("Logged in user:", user);
 
-      // TODO later: save user in context / localStorage & navigate by role
-      // e.g. navigate("/dashboard");
-      alert(`Welcome, ${user.first_name} ${user.last_name} (${user.role})`);
+      // נשמור את המשתמש בשביל ה־Navbar של System Admin
+      localStorage.setItem("csmsUser", JSON.stringify(user));
+
+      // ניווט לפי ROLE
+      if (user.role === "SYSTEM_ADMIN") {
+        navigate("/system-admin");
+      } else {
+        // כרגע כל תפקיד אחר חוזר להום
+        navigate("/");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Login failed:", err.response?.data || err.message);
       const msg =
         err.response?.data?.detail || "Login failed. Please try again.";
       setError(msg);
@@ -29,6 +41,7 @@ export default function Login() {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#4e488a] via-[#5e59b7] via-[#b28dd6] to-[#d946ef] relative overflow-hidden">

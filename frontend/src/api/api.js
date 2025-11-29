@@ -75,6 +75,14 @@ export async function fetchDepartments() {
   return res.data || [];
 }
 
+// ---- CREATE DEPARTMENT ----
+export async function createDepartment(dept) {
+  const res = await API.post("departments/", dept);
+  return res.data;
+}
+
+
+
 // ---- YEARS PER DEPARTMENT ----
 export async function fetchYears(deptId) {
   if (!deptId) return [];
@@ -107,3 +115,53 @@ export async function activateAccount(token, password, username) {
   return res.data;
 }
 
+// ===== SYSTEM ADMIN – Departments =====
+export async function fetchAdminDepartments() {
+  // מחזיר את כל המחלקות למסך ה-System Admin
+  const res = await API.get("departments/");
+  return res.data;
+}
+
+// ===== System Admin – Signup Requests =====
+
+// מחזיר את כל בקשות ה-signup של Department Admins, עם סטטוס אופציונלי
+export async function fetchAdminSignupRequests(status) {
+  const res = await API.get("admin/signup-requests/", {
+    params: status ? { status } : {},
+  });
+  return res.data || [];
+}
+
+
+// קבלת החלטה על בקשה (אישור / דחייה + סיבה)
+export async function decideOnSignupRequest(requestId, decision, reason) {
+  const payload = {
+    action: decision,         // "APPROVE" / "REJECT"
+    reason: reason || "",
+  };
+
+  const res = await API.post(
+    `admin/signup-requests/${requestId}/decision/`,
+    payload
+  );
+  return res.data;
+}
+
+export async function fetchDepartmentAdminsForSelect() {
+  const res = await API.get("admin/department-admins/");
+  return res.data || [];
+}
+
+
+
+// ===== System Admin – departments (update / delete) =====
+export const deleteAdminDepartment = async (departmentId) => {
+  const res = await API.delete(`admin/departments/${departmentId}/`);
+  return res.data;
+};
+
+export const updateAdminDepartment = async (departmentId, payload) => {
+  const res = await API.put(`admin/departments/${departmentId}/`, payload);
+  // השרת מחזיר את המחלקה המעודכנת כ-JSON
+  return res.data;
+};

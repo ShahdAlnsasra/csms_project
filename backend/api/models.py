@@ -3,6 +3,8 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 import uuid
 from django.conf import settings
 from django.utils import timezone
+from django.core.validators import RegexValidator
+
 
 # -------------------------------
 #   Department (מחלקה)
@@ -12,12 +14,16 @@ class Department(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
     degree_types = [
-        ("BSC", "Bachelor (First Degree)"),
-        ("MSC", "Master (Second Degree)"),
+        ("BSC", "First degree (BSc)"),
+        ("MSC", "Second degree (MSc)"),
+        ("BOTH", "First & Second degree (BSc + MSc)"),  # ✅ חדש
     ]
 
-    degree = models.CharField(max_length=20, choices=degree_types, default="BSC")
-    
+    degree = models.CharField(
+        max_length=20,
+        choices=degree_types,
+        default="BSC",
+    )    
     years_of_study = models.IntegerField(default=4)        # נקבע ע"י SUPER ADMIN
     semesters_per_year = models.IntegerField(default=2)    # נקבע ע"י SUPER ADMIN
 
@@ -121,6 +127,15 @@ class UserManager(BaseUserManager):
 
  
 
+phone_validator = RegexValidator(
+    regex=r'^\d{10}$',
+    message="Phone number must be exactly 10 digits."
+)
+
+id_validator = RegexValidator(
+    regex=r'^\d{9}$',
+    message="ID number must be exactly 9 digits."
+)
 
 # -------------------------------
 #   User (כל המשתמשים במערכת)
@@ -151,7 +166,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     first_name = models.CharField(max_length=40, default="", blank=True)
     last_name = models.CharField(max_length=40, default="", blank=True)
-    phone = models.CharField(max_length=20, null=True, blank=True)
+ # ✅ בדיוק 10 ספרות, אם מזינים ערך
+    phone = models.CharField(
+        max_length=10,
+        null=True,
+        blank=True,
+        validators=[phone_validator],
+    )
+
+    # ✅ בדיוק 9 ספרות, אם מזינים ערך
+    id_number = models.CharField(
+        max_length=9,
+        null=True,
+        blank=True,
+        validators=[id_validator],
+    )
     role = models.CharField(
     max_length=20,
     choices=ROLES,

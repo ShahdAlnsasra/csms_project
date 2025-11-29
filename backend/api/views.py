@@ -18,7 +18,13 @@ from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from django.db.models import Q
+from .serializers import DepartmentSerializer, SignupRequestSerializer
 
+
+
+from rest_framework import status
+from .models import Department
 
 
 class DepartmentList(APIView):
@@ -28,6 +34,16 @@ class DepartmentList(APIView):
         departments = Department.objects.all()
         serializer = DepartmentSerializer(departments, many=True)
         return Response(serializer.data)
+
+    def post(self, request):
+        """
+        Create a new Department (SYSTEM_ADMIN only בעתיד נעשה הרשאות).
+        """
+        serializer = DepartmentSerializer(data=request.data)
+        if serializer.is_valid():
+            dept = serializer.save()
+            return Response(DepartmentSerializer(dept).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -121,7 +137,10 @@ def login_view(request):
             "username": user.username,
             "first_name": user.first_name,
             "last_name": user.last_name,
+            "phone": user.phone,
+            "id_number": user.id_number,
             "role": user.role,
+            "status": user.status,
         },
         status=status.HTTP_200_OK,
     )
@@ -210,13 +229,13 @@ def signup_request_create(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # ---------- Validate phone digits only ----------
-    phone_regex = re.compile(r'^[0-9]+$')
-    if not phone_regex.match(phone):
+    # ---------- Validate phone: 10 digits ----------
+    if not re.fullmatch(r'\d{10}', phone):
         return Response(
-            {"detail": "Phone number must contain digits only."},
+            {"detail": "Phone number must be exactly 10 digits."},
             status=status.HTTP_400_BAD_REQUEST,
-        )
+        )   
+
 
     # ✅ NEW: phone uniqueness check
     if User.objects.filter(phone=phone).exists() or SignupRequest.objects.filter(phone=phone).exists():
@@ -435,3 +454,319 @@ def activate_with_magic_link(request, token):
         {"detail": "Account activated successfully. You can now log in."},
         status=status.HTTP_200_OK,
     )
+
+
+
+
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny  # יש לך את זה כבר
+
+class AdminSignupRequestList(APIView):
+    """
+    GET /api/admin/signup-requests/?status=PENDING&search=...
+    מחזיר את כל הבקשות של Department Admins (אפשר לסנן לפי סטטוס וחיפוש).
+    """
+    permission_classes = [AllowAny]  # בהמשך אפשר IsAdminUser
+
+    def get(self, request):
+        qs = SignupRequest.objects.filter(role="DEPARTMENT_ADMIN")
+
+        status_param = request.query_params.get("status")
+        search = request.query_params.get("search")
+
+        if status_param in ["PENDING", "APPROVED", "REJECTED"]:
+            qs = qs.filter(status=status_param)
+
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(department__name__icontains=search)
+            )
+
+        qs = qs.order_by("-created_at")
+        serializer = SignupRequestSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+from django.conf import settings
+from django.core.mail import send_mail
+from django.utils import timezone
+from datetime import timedelta
+from .models import MagicLink, User
+
+
+class AdminSignupRequestDecision(APIView):
+    """
+    POST /api/admin/signup-requests/<pk>/decision/
+    body: { "action": "APPROVE" or "REJECT", "reason": "..." }
+    """
+    permission_classes = [AllowAny]  # בהמשך נקשיח
+
+    def post(self, request, pk):
+        action = (request.data.get("action") or "").upper()
+        reason = (request.data.get("reason") or "").strip()
+
+        try:
+            signup = SignupRequest.objects.get(pk=pk, role="DEPARTMENT_ADMIN")
+        except SignupRequest.DoesNotExist:
+            return Response(
+                {"detail": "Signup request not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if signup.status != "PENDING":
+            return Response(
+                {"detail": "This request was already processed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ========== APPROVE ==========
+        if action == "APPROVE":
+            if not signup.email_verified:
+                return Response(
+                    {"detail": "Cannot approve request before email is verified."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # יצירת משתמש חדש במערכת
+            user = User.objects.create_user(
+                email=signup.email,
+                first_name=signup.first_name,
+                last_name=signup.last_name,
+                phone=signup.phone,
+                role="DEPARTMENT_ADMIN",
+                department=signup.department,
+                status="APPROVED",
+            )
+
+            # יצירת magic link + תוקף
+            expires_at = timezone.now() + timedelta(days=7)
+            magic = MagicLink.objects.create(
+                user=user,
+                expires_at=expires_at,
+            )
+
+            # נבנה לינק להפעלה (פרונט)
+            frontend_base = getattr(
+                settings, "FRONTEND_BASE_URL", "http://localhost:3000"
+            )
+            activate_url = f"{frontend_base}/activate/{magic.token}/"
+
+            # מייל – אושר
+            subject = "Your CSMS Department Admin request was approved"
+
+            lines = [
+                f"Hi {signup.first_name} {signup.last_name},",
+                "",
+                "Your signup request as Department Admin was approved.",
+            ]
+
+            if reason:
+                lines.append("")
+                lines.append("Message from System Admin:")
+                lines.append(reason)
+
+            lines.extend(
+                [
+                    "",
+                    "To activate your account and set a password, please click the link below:",
+                    "",
+                    activate_url,
+                    "",
+                    f"This link will expire on {expires_at.strftime('%Y-%m-%d %H:%M')}.",
+                    "",
+                    "Best regards,",
+                    "CSMS Team",
+                ]
+            )
+
+            message = "\n".join(lines)
+
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=getattr(
+                    settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER
+                ),
+                recipient_list=[signup.email],
+                fail_silently=False,
+            )
+
+            signup.status = "APPROVED"
+            signup.rejection_reason = ""
+            signup.magic_link_sent = True
+            signup.save(
+                update_fields=["status", "rejection_reason", "magic_link_sent"]
+            )
+
+            return Response(
+                {"detail": "Request approved and activation email sent."},
+                status=status.HTTP_200_OK,
+            )
+
+        # ========== REJECT ==========
+        elif action == "REJECT":
+            if not reason:
+                reason = "No specific reason was provided."
+
+            signup.status = "REJECTED"
+            signup.rejection_reason = reason
+            signup.save(update_fields=["status", "rejection_reason"])
+
+            # מייל – נדחה
+            subject = "Your CSMS Department Admin request was rejected"
+
+            lines = [
+                f"Hi {signup.first_name} {signup.last_name},",
+                "",
+                "Unfortunately, your signup request as Department Admin was rejected.",
+            ]
+
+            if reason:
+                lines.append("")
+                lines.append("Message from System Admin:")
+                lines.append(reason)
+
+            lines.extend(
+                [
+                    "",
+                    "Best regards,",
+                    "CSMS Team",
+                ]
+            )
+
+            message = "\n".join(lines)
+
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=getattr(
+                    settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER
+                ),
+                recipient_list=[signup.email],
+                fail_silently=False,
+            )
+
+            return Response(
+                {"detail": "Request rejected and email sent to the user."},
+                status=status.HTTP_200_OK,
+            )
+
+        else:
+            return Response(
+                {"detail": "Invalid action. Use APPROVE or REJECT."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+@api_view(["GET"])
+def get_department_admins(request):
+    """
+    GET /api/admin/department-admins/
+    מחזיר את כל המשתמשים שהם Department Admin מאושרים.
+    """
+    admins = User.objects.filter(
+        role="DEPARTMENT_ADMIN",
+        status="APPROVED",
+    ).select_related("department").order_by("first_name", "last_name")
+
+    data = []
+    for u in admins:
+        full_name = f"{u.first_name} {u.last_name}".strip() or u.email
+        data.append(
+            {
+                "id": u.id,
+                "full_name": full_name,
+                "email": u.email,
+                "department_id": u.department_id,
+                "department_name": u.department.name if u.department else None,
+            }
+        )
+
+    return Response(data)
+
+
+class AdminDepartmentListCreate(APIView):
+    """
+    GET  /api/admin/departments/    -> רשימת מחלקות
+    POST /api/admin/departments/    -> יצירת מחלקה חדשה
+    """
+    permission_classes = [AllowAny]  # בעתיד אפשר להקשיח ל־IsAdminUser
+
+    def get(self, request):
+        departments = Department.objects.all().order_by("code")
+        serializer = DepartmentSerializer(departments, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        admin_user_id = request.data.get("admin_user_id")
+        serializer = DepartmentSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        dept = serializer.save()
+
+        if admin_user_id:
+            try:
+                admin_user = User.objects.get(
+                    id=admin_user_id, role="DEPARTMENT_ADMIN"
+                )
+                admin_user.department = dept
+                admin_user.save(update_fields=["department"])
+            except User.DoesNotExist:
+                return Response(
+                    {"detail": "Selected department admin does not exist."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        return Response(DepartmentSerializer(dept).data, status=status.HTTP_201_CREATED)
+
+
+# backend/api/views.py – אחרי AdminDepartmentListCreate
+
+
+from rest_framework.views import APIView
+from rest_framework import status
+from .models import Department
+from .serializers import DepartmentSerializer
+
+class AdminDepartmentRetrieveUpdateDelete(APIView):
+    """
+    GET    /api/admin/departments/<pk>/
+    PUT    /api/admin/departments/<pk>/
+    DELETE /api/admin/departments/<pk>/
+    """
+    permission_classes = [AllowAny]
+
+    def get_object(self, pk):
+        try:
+            return Department.objects.get(pk=pk)
+        except Department.DoesNotExist:
+       	    return None
+
+    def get(self, request, pk):
+        dept = self.get_object(pk)
+        if not dept:
+            return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = DepartmentSerializer(dept)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        dept = self.get_object(pk)
+        if not dept:
+            return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = DepartmentSerializer(dept, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        dept = self.get_object(pk)
+        if not dept:
+            return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+        dept.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
