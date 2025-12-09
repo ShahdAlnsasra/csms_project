@@ -40,6 +40,7 @@ export async function signup(form) {
     last_name: (form.lastName || "").trim(),
     email: (form.email || "").trim(),
     phone: (form.phone || "").trim(),
+    id_number: (form.idNumber || "").trim(),
     role: form.role,
     department: form.department || null,
     study_year:
@@ -77,7 +78,7 @@ export async function fetchDepartments() {
 
 // ---- CREATE DEPARTMENT ----
 export async function createDepartment(dept) {
-  const res = await API.post("departments/", dept);
+  const res = await API.post("admin/departments/", dept);
   return res.data;
 }
 
@@ -118,7 +119,7 @@ export async function activateAccount(token, password, username) {
 // ===== SYSTEM ADMIN – Departments =====
 export async function fetchAdminDepartments() {
   // מחזיר את כל המחלקות למסך ה-System Admin
-  const res = await API.get("departments/");
+  const res = await API.get("admin/departments/");
   return res.data;
 }
 
@@ -165,3 +166,87 @@ export const updateAdminDepartment = async (departmentId, payload) => {
   // השרת מחזיר את המחלקה המעודכנת כ-JSON
   return res.data;
 };
+
+
+// ===== Department Admin – Signup Requests =====
+export async function fetchDeptAdminRequests({ departmentId, status, role, search }) {
+  if (!departmentId) return [];
+
+  const params = { department_id: departmentId };
+
+  if (status) params.status = status;
+  if (role) params.role = role;
+  if (search) params.search = search;
+
+  const res = await API.get("department-admin/requests/", { params });
+  return res.data || [];
+}
+
+
+// ===== Department Admin – simple fetch by status (used in DeptAdminRequests page) =====
+export async function fetchDepartmentSignupRequests(status) {
+  const res = await API.get("department-admin/requests/", {
+    params: status ? { status } : {},
+  });
+  return res.data || [];
+}
+
+// ===== Department Admin – Decide on signup request (STUDENT/LECTURER/REVIEWER) =====
+export async function decideOnDeptSignupRequest(requestId, decision, reason) {
+  const payload = {
+    action: decision,       // "APPROVE" / "REJECT"
+    reason: reason || "",
+  };
+
+  const res = await API.post(
+    `department-admin/requests/${requestId}/decision/`,
+    payload
+  );
+  return res.data;
+}
+
+
+// ===== Department Admin – Courses =====
+export async function fetchDeptCourses({ departmentId, year }) {
+  if (!departmentId) return [];
+
+  const params = { department_id: departmentId };
+  if (year) params.year = year;
+
+  const res = await API.get("department-admin/courses/", { params });
+  return res.data || [];
+}
+
+export async function createDeptCourse(coursePayload) {
+  const res = await API.post("department-admin/courses/", coursePayload);
+  return res.data;
+}
+
+// ===== Department Admin – Courses (update / delete) =====
+export async function updateDeptCourse(courseId, payload) {
+  const res = await API.put(`department-admin/courses/${courseId}/`, payload);
+  return res.data;
+}
+
+export async function deleteDeptCourse(courseId) {
+  const res = await API.delete(`department-admin/courses/${courseId}/`);
+  return res.data;
+}
+
+
+// Lecturers for a department (for dropdown)
+export async function fetchDeptLecturers(departmentId) {
+  if (!departmentId) return [];
+  const res = await API.get("department-admin/lecturers/", {
+    params: { department_id: departmentId },
+  });
+  return res.data || [];
+}
+
+// Single department detail (we'll reuse the admin endpoint)
+export async function fetchDepartmentDetail(deptId) {
+  if (!deptId) return null;
+  const res = await API.get(`admin/departments/${deptId}/`);
+  return res.data;
+}
+

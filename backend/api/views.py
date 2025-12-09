@@ -1,7 +1,9 @@
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-
+from .models import Course, User
+from .serializers import CourseSerializer
+from rest_framework import status
 from .models import Department, SignupRequest
 from django.contrib.auth import authenticate
 from rest_framework import status
@@ -141,6 +143,8 @@ def login_view(request):
             "id_number": user.id_number,
             "role": user.role,
             "status": user.status,
+            "department": user.department_id,
+            "department_name": user.department.name if user.department else None,
         },
         status=status.HTTP_200_OK,
     )
@@ -161,7 +165,7 @@ def signup_request_create(request):
     department_id = data.get("department")
     study_year = data.get("study_year")
     semester = data.get("semester")
-
+    id_number = (data.get("id_number") or "").strip()
 
  # ---------- Required fields: report exactly what's missing ----------
     missing = []
@@ -173,11 +177,14 @@ def signup_request_create(request):
         missing.append("email")
     if not phone:
         missing.append("phone")
+    if not id_number:
+        missing.append("id_number")
     if not role:
         missing.append("role")
     if not department_id:
         missing.append("department")
-
+    
+    
     if missing:
         return Response(
             {"detail": f"Missing required fields: {', '.join(missing)}"},
@@ -187,7 +194,7 @@ def signup_request_create(request):
 
 
     # ---------- Required fields ----------
-    if not all([first_name, last_name, email, phone, role, department_id]):
+    if not all([first_name, last_name, email, phone, role, department_id ,id_number]):
         return Response(
             {"detail": "First name, last name, email, phone, role and department are required."},
             status=status.HTTP_400_BAD_REQUEST,
@@ -244,6 +251,35 @@ def signup_request_create(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    
+        # ---------- Validate phone: 10 digits ----------
+    if not re.fullmatch(r'\d{10}', phone):
+        return Response(
+            {"detail": "Phone number must be exactly 10 digits."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ✅ NEW: phone uniqueness (already exist in your code)
+    if User.objects.filter(phone=phone).exists() or SignupRequest.objects.filter(phone=phone).exists():
+        return Response(
+            {"detail": "An account or signup request with this phone number already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ---------- Validate ID number: 9 digits ----------
+    if not re.fullmatch(r'\d{9}', id_number):
+        return Response(
+            {"detail": "ID number must be exactly 9 digits."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ✅ NEW: ID uniqueness
+    if User.objects.filter(id_number=id_number).exists() or SignupRequest.objects.filter(id_number=id_number).exists():
+        return Response(
+            {"detail": "An account or signup request with this ID number already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
 
     # ---------- Department (must exist) ----------
     try:
@@ -253,6 +289,19 @@ def signup_request_create(request):
             {"detail": "Department not found."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    
+      # ✅ NEW: only one Department Admin per department
+    if role == "DEPARTMENT_ADMIN":
+        # if there is already an APPROVED Department Admin for this dept, block signup
+        if User.objects.filter(
+            role="DEPARTMENT_ADMIN",
+            department=dept_obj,
+            status="APPROVED",
+        ).exists():
+            return Response(
+                {"detail": "This department already has an approved Department Admin."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     # generate 6-digit verification code
     verification_code = f"{random.randint(0, 999999):06d}"
@@ -262,6 +311,7 @@ def signup_request_create(request):
         phone=phone,
         first_name=first_name,
         last_name=last_name,
+        id_number=id_number,
         role=role,
         department=dept_obj,
         email_verification_code=verification_code,
@@ -489,7 +539,104 @@ class AdminSignupRequestList(APIView):
         serializer = SignupRequestSerializer(qs, many=True)
         return Response(serializer.data)
 
+class DepartmentAdminSignupRequestList(APIView):
+    """
+    GET /api/department-admin/requests/?department_id=...&status=PENDING&role=STUDENT&search=...
+    Returns all signup requests (students/lecturers/reviewers) for a specific department.
+    """
+    permission_classes = [AllowAny]  # later you can tighten this
 
+    def get(self, request):
+        dept_id = request.query_params.get("department_id")
+        if not dept_id:
+            return Response(
+                {"detail": "department_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            dept_id_int = int(dept_id)
+        except ValueError:
+            return Response(
+                {"detail": "department_id must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = SignupRequest.objects.filter(
+            department_id=dept_id_int
+        ).exclude(role="DEPARTMENT_ADMIN")
+
+        status_param = request.query_params.get("status")
+        if status_param in ["PENDING", "APPROVED", "REJECTED"]:
+            qs = qs.filter(status=status_param)
+
+        role_param = request.query_params.get("role")
+        if role_param in ["STUDENT", "LECTURER", "REVIEWER"]:
+            qs = qs.filter(role=role_param)
+
+        search = request.query_params.get("search")
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+            )
+
+        qs = qs.order_by("-created_at")
+        serializer = SignupRequestSerializer(qs, many=True)
+        return Response(serializer.data)
+
+# backend/api/views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Q
+
+from .models import SignupRequest
+from .serializers import SignupRequestSerializer
+
+
+class DepartmentAdminRequestsView(APIView):
+    """
+    Returns signup requests (STUDENT / LECTURER / REVIEWER)
+    for a given department.
+    """
+
+    def get(self, request):
+        dept_id = request.query_params.get("department_id")
+        status_param = request.query_params.get("status")  # PENDING/APPROVED/REJECTED
+        role_param = request.query_params.get("role")      # optional LECTURER/STUDENT/REVIEWER
+        search = request.query_params.get("search", "")
+
+        if not dept_id:
+            return Response(
+                {"detail": "department_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = SignupRequest.objects.filter(
+            department_id=dept_id
+        ).exclude(role="DEPARTMENT_ADMIN")
+
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        if role_param:
+            qs = qs.filter(role=role_param)
+
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+            )
+
+        qs = qs.order_by("-created_at")
+
+        serializer = SignupRequestSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
@@ -529,13 +676,23 @@ class AdminSignupRequestDecision(APIView):
                     {"detail": "Cannot approve request before email is verified."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
+            # ✅ NEW: double-check department has no existing approved admin
+            if User.objects.filter(
+                role="DEPARTMENT_ADMIN",
+                department=signup.department,
+                status="APPROVED",
+            ).exists():
+                return Response(
+                    {"detail": "This department already has an approved Department Admin."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             # יצירת משתמש חדש במערכת
             user = User.objects.create_user(
                 email=signup.email,
                 first_name=signup.first_name,
                 last_name=signup.last_name,
                 phone=signup.phone,
+                id_number=signup.id_number,
                 role="DEPARTMENT_ADMIN",
                 department=signup.department,
                 status="APPROVED",
@@ -659,6 +816,183 @@ class AdminSignupRequestDecision(APIView):
                 {"detail": "Invalid action. Use APPROVE or REJECT."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        
+
+# backend/api/views.py
+
+class DepartmentAdminRequestDecision(APIView):
+    """
+    POST /api/department-admin/requests/<pk>/decision/
+    body: { "action": "APPROVE" or "REJECT", "reason": "..." }
+
+    Used by Department Admin to approve/reject STUDENT / LECTURER / REVIEWER signup requests.
+    """
+    permission_classes = [AllowAny]  # later you can restrict
+
+    def post(self, request, pk):
+        action = (request.data.get("action") or "").upper()
+        reason = (request.data.get("reason") or "").strip()
+
+        try:
+            signup = SignupRequest.objects.get(pk=pk)
+        except SignupRequest.DoesNotExist:
+            return Response(
+                {"detail": "Signup request not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ✅ Department Admin must NOT use this endpoint for Department Admin requests
+        if signup.role == "DEPARTMENT_ADMIN":
+            return Response(
+                {"detail": "This endpoint is not for Department Admin signup requests."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if signup.status != "PENDING":
+            return Response(
+                {"detail": "This request was already processed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ========== APPROVE ==========
+        if action == "APPROVE":
+            # optional but recommended – only after email verified
+            if not signup.email_verified:
+                return Response(
+                    {"detail": "Cannot approve request before email is verified."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # create user with same department + role as in signup
+            user = User.objects.create_user(
+                email=signup.email,
+                first_name=signup.first_name,
+                last_name=signup.last_name,
+                phone=signup.phone,
+                id_number=signup.id_number,
+                role=signup.role,               # STUDENT / LECTURER / REVIEWER
+                department=signup.department,   # same department
+                status="APPROVED",
+            )
+
+            # create magic link so they can set password
+            expires_at = timezone.now() + timedelta(days=7)
+            magic = MagicLink.objects.create(
+                user=user,
+                expires_at=expires_at,
+            )
+
+            frontend_base = getattr(
+                settings, "FRONTEND_BASE_URL", "http://localhost:3000"
+            )
+            activate_url = f"{frontend_base}/activate/{magic.token}/"
+
+            subject = "Your CSMS account request was approved"
+
+            lines = [
+                f"Hi {signup.first_name} {signup.last_name},",
+                "",
+                f"Your signup request as {signup.role} in {signup.department.name if signup.department else 'your department'} was approved.",
+            ]
+
+            if reason:
+                lines.append("")
+                lines.append("Message from Department Admin:")
+                lines.append(reason)
+
+            lines.extend(
+                [
+                    "",
+                    "To activate your account and set a password, please click the link below:",
+                    "",
+                    activate_url,
+                    "",
+                    f"This link will expire on {expires_at.strftime('%Y-%m-%d %H:%M')}.",
+                    "",
+                    "Best regards,",
+                    "CSMS Team",
+                ]
+            )
+
+            message = "\n".join(lines)
+
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=getattr(
+                    settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER
+                ),
+                recipient_list=[signup.email],
+                fail_silently=False,
+            )
+
+            signup.status = "APPROVED"
+            signup.rejection_reason = ""
+            signup.magic_link_sent = True
+            signup.save(
+                update_fields=["status", "rejection_reason", "magic_link_sent"]
+            )
+
+            return Response(
+                {"detail": "Request approved and activation email sent."},
+                status=status.HTTP_200_OK,
+            )
+
+        # ========== REJECT ==========
+        elif action == "REJECT":
+            if not reason:
+                reason = "No specific reason was provided."
+
+            signup.status = "REJECTED"
+            signup.rejection_reason = reason
+            signup.save(update_fields=["status", "rejection_reason"])
+
+            subject = "Your CSMS account request was rejected"
+
+            lines = [
+                f"Hi {signup.first_name} {signup.last_name},",
+                "",
+                f"Unfortunately, your signup request as {signup.role} was rejected.",
+            ]
+
+            if reason:
+                lines.append("")
+                lines.append("Message from Department Admin:")
+                lines.append(reason)
+
+            lines.extend(
+                [
+                    "",
+                    "Best regards,",
+                    "CSMS Team",
+                ]
+            )
+
+            message = "\n".join(lines)
+
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=getattr(
+                    settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER
+                ),
+                recipient_list=[signup.email],
+                fail_silently=False,
+            )
+
+            return Response(
+                {"detail": "Request rejected and email sent to the user."},
+                status=status.HTTP_200_OK,
+            )
+
+        else:
+            return Response(
+                {"detail": "Invalid action. Use APPROVE or REJECT."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+
 
 @api_view(["GET"])
 def get_department_admins(request):
@@ -700,10 +1034,15 @@ class AdminDepartmentListCreate(APIView):
         return Response(serializer.data)
 
     def post(self, request):
+        print("=== ADMIN DEPT CREATE PAYLOAD ===")
+        print(request.data)
+
         admin_user_id = request.data.get("admin_user_id")
         serializer = DepartmentSerializer(data=request.data)
 
         if not serializer.is_valid():
+            print("=== ADMIN DEPT CREATE ERRORS ===")
+            print(serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         dept = serializer.save()
@@ -724,6 +1063,8 @@ class AdminDepartmentListCreate(APIView):
         return Response(DepartmentSerializer(dept).data, status=status.HTTP_201_CREATED)
 
 
+
+
 # backend/api/views.py – אחרי AdminDepartmentListCreate
 
 
@@ -732,33 +1073,72 @@ from rest_framework import status
 from .models import Department
 from .serializers import DepartmentSerializer
 
+# class AdminDepartmentRetrieveUpdateDelete(APIView):
+#     """
+#     GET    /api/admin/departments/<pk>/
+#     PUT    /api/admin/departments/<pk>/
+#     DELETE /api/admin/departments/<pk>/
+#     """
+#     permission_classes = [AllowAny]
+
+#     def get_object(self, pk):
+#         try:
+#             return Department.objects.get(pk=pk)
+#         except Department.DoesNotExist:
+#        	    return None
+
+#     def get(self, request, pk):
+#         dept = self.get_object(pk)
+#         if not dept:
+#             return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+#         serializer = DepartmentSerializer(dept)
+#         return Response(serializer.data)
+
+#     def put(self, request, pk):
+#         dept = self.get_object(pk)
+#         if not dept:
+#             return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+
+#         serializer = DepartmentSerializer(dept, data=request.data)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response(serializer.data)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+#     def delete(self, request, pk):
+#         dept = self.get_object(pk)
+#         if not dept:
+#             return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+#         dept.delete()
+#         return Response(status=status.HTTP_204_NO_CONTENT)
+
 class AdminDepartmentRetrieveUpdateDelete(APIView):
-    """
-    GET    /api/admin/departments/<pk>/
-    PUT    /api/admin/departments/<pk>/
-    DELETE /api/admin/departments/<pk>/
-    """
     permission_classes = [AllowAny]
 
     def get_object(self, pk):
         try:
             return Department.objects.get(pk=pk)
         except Department.DoesNotExist:
-       	    return None
+            return None
 
     def get(self, request, pk):
         dept = self.get_object(pk)
         if not dept:
-            return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Department not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
         serializer = DepartmentSerializer(dept)
         return Response(serializer.data)
 
     def put(self, request, pk):
         dept = self.get_object(pk)
         if not dept:
-            return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = DepartmentSerializer(dept, data=request.data)
+            return Response(
+                {"detail": "Department not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = DepartmentSerializer(dept, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -767,6 +1147,178 @@ class AdminDepartmentRetrieveUpdateDelete(APIView):
     def delete(self, request, pk):
         dept = self.get_object(pk)
         if not dept:
-            return Response({"detail": "Department not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Department not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
         dept.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
+class DepartmentAdminCoursesView(APIView):
+    """
+    GET  /api/department-admin/courses/?department_id=1&year=2
+    POST /api/department-admin/courses/
+    """
+
+    def get(self, request):
+        dept_id = request.query_params.get("department_id")
+        year = request.query_params.get("year")
+
+        if not dept_id:
+            return Response(
+                {"detail": "department_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = Course.objects.filter(department_id=dept_id).order_by("year", "semester", "code")
+
+        if year:
+            qs = qs.filter(year=year)
+
+        serializer = CourseSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        """
+        Create a course for a given department & year.
+        Expect `prerequisite_ids: [..]` in the payload.
+        """
+        serializer = CourseSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        course = serializer.save()
+
+        return Response(CourseSerializer(course).data, status=status.HTTP_201_CREATED)
+
+
+class DepartmentAdminCourseListCreate(APIView):
+    """
+    GET  /api/department-admin/courses/?department_id=..&year=1
+      -> list courses for that department (optionally filter by year)
+
+    POST /api/department-admin/courses/
+      body: {
+        "name": "...",
+        "code": "...",
+        "department": <id>,
+        "description": "...",
+        "credits": 3.0,
+        "year": 1,
+        "semester": "A",
+        "lecturer_ids": [userId1, userId2],
+        "prerequisite_ids": [courseId1, courseId2]
+      }
+    """
+    permission_classes = [AllowAny]  # later you can restrict to dept admins
+
+    def get(self, request):
+        dept_id = request.query_params.get("department_id")
+        year = request.query_params.get("year")
+
+        if not dept_id:
+            return Response(
+                {"detail": "department_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = Course.objects.filter(department_id=dept_id)
+
+        if year:
+            try:
+                year_int = int(year)
+                qs = qs.filter(year=year_int)
+            except ValueError:
+                return Response(
+                    {"detail": "year must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        qs = qs.order_by("year", "semester", "code")
+        serializer = CourseSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = CourseSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        course = serializer.save()
+        return Response(
+            CourseSerializer(course).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@api_view(["GET"])
+def get_department_lecturers(request):
+    """
+    GET /api/department-admin/lecturers/?department_id=...
+    -> all APPROVED lecturers for that department
+    """
+    dept_id = request.query_params.get("department_id")
+    if not dept_id:
+        return Response(
+            {"detail": "department_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    qs = User.objects.filter(
+        role="LECTURER",
+        status="APPROVED",
+        department_id=dept_id,
+    ).order_by("first_name", "last_name")
+
+    data = []
+    for u in qs:
+        full_name = f"{u.first_name} {u.last_name}".strip() or u.email
+        data.append(
+            {
+                "id": u.id,
+                "full_name": full_name,
+                "email": u.email,
+            }
+        )
+    return Response(data, status=status.HTTP_200_OK)
+
+
+
+class DepartmentAdminCourseDetail(APIView):
+    """
+    PUT /api/department-admin/courses/<pk>/
+    DELETE /api/department-admin/courses/<pk>/
+    """
+
+    permission_classes = [AllowAny]  # later you can restrict to Dept Admin
+
+    def get_object(self, pk):
+        try:
+            return Course.objects.get(pk=pk)
+        except Course.DoesNotExist:
+            return None
+
+    def put(self, request, pk):
+        course = self.get_object(pk)
+        if not course:
+            return Response(
+                {"detail": "Course not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # partial=True → you can send only some fields
+        serializer = CourseSerializer(course, data=request.data, partial=True)
+        if serializer.is_valid():
+            updated = serializer.save()
+            return Response(CourseSerializer(updated).data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        course = self.get_object(pk)
+        if not course:
+            return Response(
+                {"detail": "Course not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        course.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import CustomSelect from "../components/CustomSelectGradient";
 import { fetchRoles, fetchDepartments, signup } from "../api/api";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react"; // 👈 NEW
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export default function Signup() {
     lastName: "",
     email: "",
     phone: "",
+    idNumber: "",
     role: "",
     department: "",
     studyYear: "",
@@ -30,7 +32,6 @@ export default function Signup() {
   const handleChange = (name, value) => {
     console.log("changing:", name, value);
 
-    // Normalize { value, label } -> value (from CustomSelect)
     const actualValue =
       value && typeof value === "object" && "value" in value
         ? value.value
@@ -118,14 +119,12 @@ export default function Signup() {
     setSemesterOptions(sems);
   }, [form.department, departments]);
 
-  // --- handle submit ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
     setLoading(true);
 
-    // Trim values
     const firstName = (form.firstName || "").trim();
     const lastName = (form.lastName || "").trim();
     const email = (form.email || "").trim();
@@ -134,27 +133,25 @@ export default function Signup() {
     const department = form.department;
     const studyYear = form.studyYear;
     const semester = form.semester;
+    const idNumber = (form.idNumber || "").trim();
 
-    // Regex rules
-    const nameRegex = /^[A-Za-z]+$/; // only English letters
-    const phoneRegex = /^[0-9]+$/; // only digits
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // basic email
+    const nameRegex = /^[A-Za-z]+$/;
+    const phoneRegex = /^[0-9]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const idRegex = /^[0-9]{9}$/;
 
-    // 1. Required fields for everyone
-    if (!firstName || !lastName || !email || !phone || !role) {
+    if (!firstName || !lastName || !email || !phone || !role || !idNumber) {
       setLoading(false);
       setError("Please fill in all required fields.");
       return;
     }
 
-    // 2. Department must be selected
     if (!department) {
       setLoading(false);
       setError("Please select a department.");
       return;
     }
 
-    // 3. For STUDENT → require year + semester
     if (role === "STUDENT") {
       if (!studyYear || !semester) {
         setLoading(false);
@@ -163,7 +160,6 @@ export default function Signup() {
       }
     }
 
-    // 4. Validate first / last name (only letters)
     if (!nameRegex.test(firstName)) {
       setLoading(false);
       setError("First name must contain only English letters (A–Z).");
@@ -176,25 +172,29 @@ export default function Signup() {
       return;
     }
 
-    // 5. Validate email format
     if (!emailRegex.test(email)) {
       setLoading(false);
       setError("Please enter a valid email address.");
       return;
     }
 
-    // 6. Validate phone digits only
     if (!phoneRegex.test(phone)) {
       setLoading(false);
       setError("Phone number must contain digits only.");
       return;
     }
 
+    if (!idRegex.test(idNumber)) {
+      setLoading(false);
+      setError("ID number must be exactly 9 digits.");
+      return;
+    }
+
     try {
-      // Send camelCase object – api.js will convert to snake_case
       const res = await signup({
         firstName,
         lastName,
+        idNumber,
         email,
         phone,
         role,
@@ -204,7 +204,6 @@ export default function Signup() {
       });
 
       console.log("Signup success:", res);
-      // Optional: setSuccess("Signup successful! Please check your email.");
       navigate(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err) {
       console.error("Signup failed:", err);
@@ -227,12 +226,21 @@ export default function Signup() {
         }}
       />
 
+      {/* 🔙 Back to home button */}
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        className="absolute top-6 left-6 inline-flex items-center gap-2 text-white/85 hover:text-white text-sm font-medium"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span>Back to home</span>
+      </button>
+
       <div className="relative bg-white/20 backdrop-blur-xl border border-white/30 shadow-2xl rounded-3xl px-10 py-12 w-[95%] max-w-3xl text-white">
         <h1 className="text-4xl font-bold text-center mb-8">
           Create Your Account
         </h1>
 
-        {/* we wrap everything in a form */}
         <form className="space-y-6" onSubmit={handleSubmit}>
           {/* FIRST + LAST NAME */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
@@ -260,6 +268,19 @@ export default function Signup() {
                 onChange={(e) => handleChange("lastName", e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="mt-2">
+            <label className="block mb-2 text-white/90 font-medium">
+              ID Number
+            </label>
+            <input
+              type="text"
+              placeholder="Enter your ID number"
+              className={inputStyle}
+              value={form.idNumber}
+              onChange={(e) => handleChange("idNumber", e.target.value)}
+            />
           </div>
 
           {/* EMAIL + PHONE */}
@@ -331,7 +352,6 @@ export default function Signup() {
             )}
           </div>
 
-          {/* error / success messages */}
           {error && (
             <div className="text-red-200 bg-red-500/20 border border-red-300/50 rounded-lg px-3 py-2 text-sm">
               {error}
@@ -343,7 +363,6 @@ export default function Signup() {
             </div>
           )}
 
-          {/* SUBMIT BUTTON */}
           <button
             type="submit"
             disabled={loading}

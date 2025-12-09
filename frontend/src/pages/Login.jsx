@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { login } from "../api/api";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react"; // 👈 NEW
 
 export default function Login() {
-  const [identifier, setIdentifier] = useState(""); // email for now
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();   // 👈 להוסיף שורה זו
-
+  const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -16,20 +16,23 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const trimmedIdentifier = identifier.trim(); // מוריד רווחים בקצה
+      const trimmedIdentifier = identifier.trim();
 
-      // קריאה ל־backend
       const user = await login(trimmedIdentifier, password);
       console.log("Logged in user:", user);
 
-      // נשמור את המשתמש בשביל ה־Navbar של System Admin
       localStorage.setItem("csmsUser", JSON.stringify(user));
 
-      // ניווט לפי ROLE
+      // 🔥 redirect by role
       if (user.role === "SYSTEM_ADMIN") {
         navigate("/system-admin");
+      } else if (user.role === "DEPARTMENT_ADMIN") {
+        navigate("/department-admin/dashboard");
+      } else if (user.role === "STUDENT") {
+        navigate("/");
+      } else if (user.role === "LECTURER" || user.role === "REVIEWER") {
+        navigate("/");
       } else {
-        // כרגע כל תפקיד אחר חוזר להום
         navigate("/");
       }
     } catch (err) {
@@ -42,7 +45,6 @@ export default function Login() {
     }
   }
 
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#4e488a] via-[#5e59b7] via-[#b28dd6] to-[#d946ef] relative overflow-hidden">
       {/* Glow background */}
@@ -54,6 +56,16 @@ export default function Login() {
         }}
       />
 
+      {/* 🔙 Back to home button */}
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        className="absolute top-6 left-6 inline-flex items-center gap-2 text-white/85 hover:text-white text-sm font-medium"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span>Back to home</span>
+      </button>
+
       {/* Login Card */}
       <div className="relative bg-white/20 backdrop-blur-xl border border-white/30 shadow-2xl rounded-3xl px-10 py-12 w-[90%] max-w-md text-white">
         <h2 className="text-4xl font-bold text-center mb-8">
@@ -63,19 +75,18 @@ export default function Login() {
         <form className="space-y-6" onSubmit={handleSubmit}>
           {/* Username or Email */}
           <div>
-          <label className="block mb-2 text-white/90 font-medium">
-            Username or Email
-         </label>
-         <input
-          type="text"
-          autoComplete="username"
-          className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/60 focus:ring-2 focus:ring-pink-300 outline-none"
-          placeholder="Enter your username or email"
-          value={identifier}
-          onChange={(e) => setIdentifier(e.target.value)}
-         />
-        </div>
-
+            <label className="block mb-2 text-white/90 font-medium">
+              Username or Email
+            </label>
+            <input
+              type="text"
+              autoComplete="username"
+              className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/60 focus:ring-2 focus:ring-pink-300 outline-none"
+              placeholder="Enter your username or email"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+            />
+          </div>
 
           {/* Password */}
           <div>

@@ -13,11 +13,15 @@ import SystemAdminProfile from "./pages/systemAdmin/SystemAdminProfile";
 import SystemAdminDepartmentDetails from "./pages/systemAdmin/SystemAdminDepartmentDetails";
 import SystemAdminManageDepartments from "./pages/systemAdmin/SystemAdminManageDepartments";
 import SystemAdminDepartmentEdit from "./pages/systemAdmin/SystemAdminDepartmentEdit";
-
+import DepartmentAdminDashboard from "./pages/DepartmentAdmin/DepartmentAdminDashboard";
 import Footer from "./components/Footer";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import SupportPage from "./pages/SupportPage";
+import UserProfile from "./components/UserProfile";
+import DepartmentAdminLayout from "./components/DepartmentAdminLayout";
+import DepartmentAdminRequests from "./pages/DepartmentAdmin/DepartmentAdminRequests";
+import DepartmentAdminCourses from "./pages/DepartmentAdmin/DepartmentAdminCourses";
 
 
 function App() {
@@ -60,7 +64,26 @@ function App() {
                 path="/system-admin/departments/edit/:code"
                 element={<SystemAdminDepartmentEdit />}
               />
+              <Route path="profile" element={<UserProfile />} />
             </Route>
+          
+          <Route path="profile" element={<UserProfile />} />
+          <Route path="departments/:id" element={<SystemAdminDepartmentDetails />} />
+          <Route
+               path="/system-admin/departments/edit/:code"
+               element={<SystemAdminDepartmentEdit />}
+          />
+
+
+         {/* Department Admin area */}
+        <Route path="/department-admin" element={<DepartmentAdminLayout />}>
+          <Route index element={<DepartmentAdminDashboard />} />
+          <Route path="dashboard" element={<DepartmentAdminDashboard />} />
+          <Route path="requests" element={<DepartmentAdminRequests />} />
+          <Route path="profile" element={<UserProfile />} />
+          <Route path="/department-admin/courses" element={<DepartmentAdminCourses />}/>
+        </Route>
+        
           </Routes>
         </div>
 

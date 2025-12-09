@@ -26,8 +26,7 @@ class Department(models.Model):
     )    
     years_of_study = models.IntegerField(default=4)        # נקבע ע"י SUPER ADMIN
     semesters_per_year = models.IntegerField(default=2)    # נקבע ע"י SUPER ADMIN
-
-    description = models.TextField(null=True, blank=True)
+    description = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -57,7 +56,13 @@ class Course(models.Model):
     semester = models.CharField(max_length=10, choices=semester_choices, default="A")
 
     lecturers = models.ManyToManyField(settings.AUTH_USER_MODEL, limit_choices_to={"role": "LECTURER"})
-
+    # ✅ NEW: prerequisites (courses you must pass before this one)
+    prerequisites = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="unlocks",
+    )
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -227,8 +232,13 @@ class SignupRequest(models.Model):
     last_name = models.CharField(max_length=40)
     role = models.CharField(max_length=20, choices=ROLES)
     phone = models.CharField(max_length=20, null=True, blank=True)
+    id_number = models.CharField(
+        max_length=9,
+        null=True,
+        blank=True,
+        validators=[id_validator],   # you already defined this above
+    )
     department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
-
     study_year = models.IntegerField(null=True, blank=True)
 
     student_semester = models.CharField(

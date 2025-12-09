@@ -7,7 +7,8 @@ from django.urls import path, include
 from rest_framework import routers
 from .views import DepartmentList
 router = routers.DefaultRouter()
-
+from .views import DepartmentAdminRequestsView
+from .views import DepartmentAdminCourseDetail
 from .views import (
     
     AdminSignupRequestList,
@@ -15,6 +16,11 @@ from .views import (
     AdminDepartmentListCreate,
     get_department_admins,
     AdminDepartmentRetrieveUpdateDelete,
+    DepartmentAdminSignupRequestList,
+    DepartmentAdminRequestDecision,
+    DepartmentAdminCourseListCreate,
+    get_department_lecturers,
+    
 )
 
 urlpatterns = [
@@ -23,7 +29,7 @@ urlpatterns = [
     path("signup/verify-email/", views.verify_signup_email, name="signup-verify-email"),
     path("login/", views.login_view, name="login"),
     path("roles/", views.get_roles, name="roles"),
-     path("departments/", DepartmentList.as_view(), name="department-list"),
+    path("departments/", DepartmentList.as_view(), name="department-list"),
     path("departments/<int:dept_id>/years/", views.get_years_for_department, name="dept-years"),
     path("semesters/", views.get_semesters, name="semesters"),
     path("activate/<uuid:token>/", views.activate_with_magic_link, name="activate"),
@@ -36,6 +42,37 @@ urlpatterns = [
     path("admin/departments/<int:pk>/", AdminDepartmentRetrieveUpdateDelete.as_view(), name="admin-department-detail"),
     path("admin/department-admins/", get_department_admins, name="admin-department-admins"),
 
+     # ====== DEPARTMENT ADMIN API ======
+    path(
+        "department-admin/requests/",
+        DepartmentAdminSignupRequestList.as_view(),
+        name="department-admin-requests",
+    ),
+
+    path(
+        "department-admin/requests/<int:pk>/decision/",
+        DepartmentAdminRequestDecision.as_view(),
+        name="department-admin-request-decision",
+    ),
+
+     path(
+        "department-admin/courses/",
+        DepartmentAdminCourseListCreate.as_view(),
+        name="department-admin-courses",
+    ),
+
+    path(
+        "department-admin/lecturers/",
+        get_department_lecturers,
+        name="department-admin-lecturers",
+    ),
+    
+    path(
+        "department-admin/courses/<int:pk>/",
+        DepartmentAdminCourseDetail.as_view(),
+        name="department-admin-course-detail",
+    ),
+    
     
 ]
 
