@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import CustomSelect from "../components/CustomSelectGradient";
 import { fetchRoles, fetchDepartments, signup } from "../api/api";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react"; // 👈 NEW
+import { ArrowLeft } from "lucide-react";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -30,8 +30,6 @@ export default function Signup() {
   const [success, setSuccess] = useState("");
 
   const handleChange = (name, value) => {
-    console.log("changing:", name, value);
-
     const actualValue =
       value && typeof value === "object" && "value" in value
         ? value.value
@@ -57,9 +55,8 @@ export default function Signup() {
   };
 
   const inputStyle =
-    "w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/60 focus:ring-2 focus:ring-pink-300 outline-none";
+    "w-full px-4 py-3 rounded-xl bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition";
 
-  // Load roles + departments
   useEffect(() => {
     async function loadInitial() {
       try {
@@ -85,7 +82,6 @@ export default function Signup() {
     loadInitial();
   }, []);
 
-  // Compute year + semester when department changes
   useEffect(() => {
     if (!form.department) {
       setYearOptions([]);
@@ -191,7 +187,7 @@ export default function Signup() {
     }
 
     try {
-      const res = await signup({
+      await signup({
         firstName,
         lastName,
         idNumber,
@@ -203,10 +199,8 @@ export default function Signup() {
         semester,
       });
 
-      console.log("Signup success:", res);
       navigate(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err) {
-      console.error("Signup failed:", err);
       const msg =
         err.response?.data?.detail ||
         "Signup failed. Please check your details and try again.";
@@ -217,160 +211,221 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#4e488a] via-[#5e59b7] via-[#b28dd6] to-[#d946ef] relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900 relative overflow-hidden">
       <div
-        className="absolute inset-0 blur-[130px] opacity-70 pointer-events-none"
+        className="absolute inset-0 opacity-70 blur-[120px] pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.25), transparent 50%), radial-gradient(circle at 70% 80%, rgba(255,255,255,0.25), transparent 50%)",
+            "radial-gradient(circle at 20% 20%, rgba(99,102,241,0.18), transparent 35%), radial-gradient(circle at 80% 10%, rgba(56,189,248,0.18), transparent 35%), radial-gradient(circle at 60% 80%, rgba(52,211,153,0.18), transparent 40%)",
+        }}
+      />
+      <div className="absolute -left-10 bottom-10 h-48 w-48 bg-gradient-to-br from-indigo-100 via-white to-transparent blur-3xl opacity-70" />
+      <div className="absolute -right-10 top-10 h-48 w-48 bg-gradient-to-br from-sky-100 via-white to-transparent blur-3xl opacity-70" />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.14] mix-blend-multiply"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(99,102,241,0.15) 1px, transparent 0)",
+          backgroundSize: "22px 22px",
+        }}
+      />
+      <div
+        className="absolute right-10 bottom-12 h-40 w-32 opacity-60"
+        style={{
+          background:
+            "conic-gradient(from 60deg, rgba(99,102,241,0.16), rgba(56,189,248,0.14), rgba(236,72,153,0.12), rgba(99,102,241,0.16))",
+          clipPath: "polygon(10% 0, 100% 20%, 90% 100%, 0 80%)",
         }}
       />
 
-      {/* 🔙 Back to home button */}
-      <button
-        type="button"
-        onClick={() => navigate("/")}
-        className="absolute top-6 left-6 inline-flex items-center gap-2 text-white/85 hover:text-white text-sm font-medium"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        <span>Back to home</span>
-      </button>
+      <div className="relative max-w-6xl mx-auto px-5 py-10 md:py-16">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
+        </button>
 
-      <div className="relative bg-white/20 backdrop-blur-xl border border-white/30 shadow-2xl rounded-3xl px-10 py-12 w-[95%] max-w-3xl text-white">
-        <h1 className="text-4xl font-bold text-center mb-8">
-          Create Your Account
-        </h1>
-
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          {/* FIRST + LAST NAME */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
-            <div>
-              <label className="block mb-2 text-white/90 font-medium">
-                First Name
-              </label>
-              <input
-                placeholder="Enter your first name"
-                className={inputStyle}
-                value={form.firstName}
-                onChange={(e) => handleChange("firstName", e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="block mb-2 text-white/90 font-medium">
-                Last Name
-              </label>
-              <input
-                type="text"
-                placeholder="Enter your last name"
-                className={inputStyle}
-                value={form.lastName}
-                onChange={(e) => handleChange("lastName", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="mt-2">
-            <label className="block mb-2 text-white/90 font-medium">
-              ID Number
-            </label>
-            <input
-              type="text"
-              placeholder="Enter your ID number"
-              className={inputStyle}
-              value={form.idNumber}
-              onChange={(e) => handleChange("idNumber", e.target.value)}
+        <div className="mt-8 grid gap-8 lg:grid-cols-[1.05fr,0.95fr] items-start">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl shadow-slate-200/80 relative overflow-hidden">
+            <div className="absolute right-4 top-4 h-16 w-16 rounded-full bg-gradient-to-br from-indigo-100 via-white to-sky-50 blur-xl opacity-80" />
+            <div
+              className="absolute -left-12 bottom-6 h-24 w-40 opacity-60"
+              style={{
+                background:
+                  "conic-gradient(from 140deg, rgba(99,102,241,0.18), rgba(56,189,248,0.14), rgba(16,185,129,0.14), rgba(99,102,241,0.18))",
+                clipPath: "polygon(0 25%, 100% 0, 85% 100%, 10% 90%)",
+              }}
             />
-          </div>
-
-          {/* EMAIL + PHONE */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
-            <div>
-              <label className="block mb-2 text-white/90 font-medium">
-                Email
-              </label>
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className={inputStyle}
-                value={form.email}
-                onChange={(e) => handleChange("email", e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="block mb-2 text-white/90 font-medium">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                placeholder="Enter your phone number"
-                className={inputStyle}
-                value={form.phone}
-                onChange={(e) => handleChange("phone", e.target.value)}
-              />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-700">
+              Create account
+            </p>
+            <h1 className="mt-3 text-3xl md:text-4xl font-bold text-slate-900">
+              Join the CSMS academic workspace
+            </h1>
+            <p className="mt-3 text-slate-700 leading-relaxed">
+              Set up your profile with the right role and department so you can
+              collaborate on curricula, manage syllabi, and keep students informed.
+            </p>
+            <div className="mt-6 grid gap-3 text-sm text-slate-700">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                Role-aware onboarding for administrators, lecturers, reviewers, and students.
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-sky-500" />
+                Department context unlocks the right years, semesters, and courses.
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Clean, legible UI with the same academic palette as the rest of CSMS.
+              </div>
             </div>
           </div>
 
-          {/* ROLE SELECT */}
-          <div className="mt-2">
-            <CustomSelect
-              label="Role"
-              value={form.role}
-              onChange={(val) => handleChange("role", val)}
-              options={roles}
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl shadow-slate-200/80 relative overflow-hidden">
+            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-100 via-white to-emerald-50 blur-2xl opacity-70" />
+            <div
+              className="absolute -left-12 bottom-0 h-28 w-44 opacity-55"
+              style={{
+                background:
+                  "conic-gradient(from 200deg, rgba(99,102,241,0.16), rgba(56,189,248,0.14), rgba(236,72,153,0.12), rgba(99,102,241,0.16))",
+                clipPath: "polygon(0 0, 100% 25%, 80% 100%, 0 85%)",
+              }}
             />
-          </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-6">Sign up</h2>
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-2 text-sm font-semibold text-slate-800">
+                    First Name
+                  </label>
+                  <input
+                    placeholder="Enter your first name"
+                    className={inputStyle}
+                    value={form.firstName}
+                    onChange={(e) => handleChange("firstName", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-2 text-sm font-semibold text-slate-800">
+                    Last Name
+                  </label>
+                  <input
+                    placeholder="Enter your last name"
+                    className={inputStyle}
+                    value={form.lastName}
+                    onChange={(e) => handleChange("lastName", e.target.value)}
+                  />
+                </div>
+              </div>
 
-          {/* CONDITIONAL FIELDS */}
-          <div className="space-y-6">
-            {form.role && (
-              <CustomSelect
-                label="Department"
-                value={form.department}
-                onChange={(val) => handleChange("department", val)}
-                options={departmentOptions}
-              />
-            )}
-
-            {form.role === "STUDENT" && (
-              <>
-                <CustomSelect
-                  label="Study Year"
-                  value={form.studyYear}
-                  onChange={(val) => handleChange("studyYear", val)}
-                  options={yearOptions}
+              <div>
+                <label className="block mb-2 text-sm font-semibold text-slate-800">
+                  ID Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter your ID number"
+                  className={inputStyle}
+                  value={form.idNumber}
+                  onChange={(e) => handleChange("idNumber", e.target.value)}
                 />
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-2 text-sm font-semibold text-slate-800">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="Enter your email"
+                    className={inputStyle}
+                    value={form.email}
+                    onChange={(e) => handleChange("email", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-2 text-sm font-semibold text-slate-800">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Enter your phone number"
+                    className={inputStyle}
+                    value={form.phone}
+                    onChange={(e) => handleChange("phone", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
                 <CustomSelect
-                  label="Semester"
-                  value={form.semester}
-                  onChange={(val) => handleChange("semester", val)}
-                  options={semesterOptions}
+                  label="Role"
+                  value={form.role}
+                  onChange={(val) => handleChange("role", val)}
+                  options={roles}
                 />
-              </>
-            )}
+              </div>
+
+              <div className="space-y-4">
+                {form.role && (
+                  <CustomSelect
+                    label="Department"
+                    value={form.department}
+                    onChange={(val) => handleChange("department", val)}
+                    options={departmentOptions}
+                  />
+                )}
+
+                {form.role === "STUDENT" && (
+                  <>
+                    <CustomSelect
+                      label="Study Year"
+                      value={form.studyYear}
+                      onChange={(val) => handleChange("studyYear", val)}
+                      options={yearOptions}
+                    />
+                    <CustomSelect
+                      label="Semester"
+                      value={form.semester}
+                      onChange={(val) => handleChange("semester", val)}
+                      options={semesterOptions}
+                    />
+                  </>
+                )}
+              </div>
+
+              {error && (
+                <div className="text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm">
+                  {success}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold shadow-lg shadow-indigo-200 transition"
+              >
+                {loading ? "Submitting..." : "Sign Up"}
+              </button>
+              <p className="text-sm text-slate-700 text-center">
+                Already have an account?{" "}
+                <a href="/login" className="text-indigo-700 hover:text-indigo-600">
+                  Login
+                </a>
+              </p>
+            </form>
           </div>
-
-          {error && (
-            <div className="text-red-200 bg-red-500/20 border border-red-300/50 rounded-lg px-3 py-2 text-sm">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="text-emerald-200 bg-emerald-500/20 border border-emerald-300/50 rounded-lg px-3 py-2 text-sm">
-              {success}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-4 w-full py-3 bg-white/20 hover:bg-white/30 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl backdrop-blur-lg transition duration-300 shadow-xl"
-          >
-            {loading ? "Submitting..." : "Sign Up"}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );

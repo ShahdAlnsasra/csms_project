@@ -42,10 +42,10 @@ export default function CustomSelectGradient({
   }, [open]);
 
   const icons = {
-    STUDENT: <FaUserGraduate className="text-purple-600 text-lg" />,
-    LECTURER: <FaChalkboardTeacher className="text-purple-600 text-lg" />,
-    REVIEWER: <FaUserEdit className="text-purple-600 text-lg" />,
-    DEPARTMENT_ADMIN: <FaUserTie className="text-purple-600 text-lg" />,
+    STUDENT: <FaUserGraduate className="text-indigo-500 text-lg" />,
+    LECTURER: <FaChalkboardTeacher className="text-indigo-500 text-lg" />,
+    REVIEWER: <FaUserEdit className="text-indigo-500 text-lg" />,
+    DEPARTMENT_ADMIN: <FaUserTie className="text-indigo-500 text-lg" />,
   };
 
   const selectedOption = options.find(
@@ -54,27 +54,29 @@ export default function CustomSelectGradient({
 
   return (
     <div className="relative w-full">
-      <label className="block mb-2 text-white/90 font-semibold">{label}</label>
+      <label className="block mb-2 text-slate-800 font-semibold">{label}</label>
 
       <div
         ref={boxRef}
         onClick={() => setOpen(!open)}
         className="
           px-4 py-3 rounded-xl cursor-pointer
-          bg-gradient-to-r from-[#c7a6ff]/40 via-[#b282f7]/40 to-[#9d4edd]/40
-          border border-white/30 text-white backdrop-blur-xl
-          shadow-lg shadow-purple-500/20
+          bg-gradient-to-r from-white via-indigo-50 to-sky-50
+          border border-slate-200 text-slate-900 backdrop-blur-xl
+          shadow-lg shadow-indigo-100
           flex justify-between items-center
-          transition-all duration-300 hover:shadow-purple-400/40 hover:scale-[1.01]
+          transition-all duration-300 hover:shadow-indigo-200 hover:border-indigo-200 hover:scale-[1.01]
         "
       >
         <div className="flex items-center gap-2">
           {selectedOption && icons[selectedOption.value]}
-          <span>{selectedOption ? selectedOption.label : `Select ${label}`}</span>
+          <span className="font-medium">
+            {selectedOption ? selectedOption.label : `Select ${label}`}
+          </span>
         </div>
 
         <FiChevronDown
-          className={`text-white text-xl transition-transform duration-300 ${
+          className={`text-slate-700 text-xl transition-transform duration-300 ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -86,8 +88,8 @@ export default function CustomSelectGradient({
           <div
             className="
               absolute z-[9999] rounded-xl
-              bg-gradient-to-b from-[#ffffff]/95 to-[#f1e1ff]/95
-              backdrop-blur-xl border border-white/40 shadow-2xl
+              bg-gradient-to-b from-white/95 to-indigo-50/95
+              backdrop-blur-xl border border-slate-200 shadow-2xl shadow-indigo-100
               animate-slideDown max-h-56 overflow-y-auto custom-scrollbar
             "
             style={{
@@ -106,9 +108,9 @@ export default function CustomSelectGradient({
                 }}
                 className="
                   px-4 py-3 cursor-pointer flex items-center gap-3
-                  text-gray-800 transition-all
-                  hover:bg-gradient-to-r hover:from-[#c084fc]/90 hover:to-[#a855f7]/90
-                  hover:text-white hover:shadow-lg hover:shadow-purple-400/30
+                  text-slate-800 transition-all
+                  hover:bg-gradient-to-r hover:from-indigo-100 hover:to-sky-100
+                  hover:text-slate-900 hover:shadow-lg hover:shadow-indigo-100
                 "
               >
                 {icons[opt.value]}
