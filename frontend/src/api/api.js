@@ -250,3 +250,22 @@ export async function fetchDepartmentDetail(deptId) {
   return res.data;
 }
 
+// ===== Department Admin – Course Graph (for diagram) =====
+export async function fetchCourseGraph({ departmentId, year }) {
+  if (!departmentId) return { nodes: [], edges: [] };
+
+  const params = { department_id: departmentId };
+  if (year) params.year = year;
+
+  const res = await API.get("department-admin/course-graph/", { params });
+  return res.data || { nodes: [], edges: [] };
+}
+
+
+// ===== Department Admin – Course AI Insights =====
+export async function fetchCourseAIInsights(courseId) {
+  if (!courseId) throw new Error("courseId is required");
+
+  const res = await API.get(`department-admin/courses/${courseId}/ai-insights/`);
+  return res.data;
+}

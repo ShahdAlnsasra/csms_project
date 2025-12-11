@@ -1322,3 +1322,214 @@ class DepartmentAdminCourseDetail(APIView):
 
         course.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
+
+
+
+# backend/api/views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import Course
+
+@api_view(["GET"])
+@permission_classes([AllowAny])  # later you can restrict to dept admins
+def department_course_graph(request):
+    """
+    GET /api/department-admin/course-graph/?department_id=1&year=2
+
+    Returns:
+    {
+      "nodes": [
+        { "id": 1, "code": "CS101", "name": "...", "credits": 4.0,
+          "year": 1, "semester": "A" },
+        ...
+      ],
+      "edges": [
+        { "from": 1, "to": 5 },   // 1 is prerequisite of 5
+        ...
+      ]
+    }
+    """
+    dept_id = request.query_params.get("department_id")
+    year = request.query_params.get("year")
+
+    if not dept_id:
+        return Response(
+            {"detail": "department_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        dept_id_int = int(dept_id)
+    except ValueError:
+        return Response(
+            {"detail": "department_id must be an integer."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    qs = Course.objects.filter(department_id=dept_id_int).prefetch_related("prerequisites")
+
+    if year:
+        try:
+            year_int = int(year)
+            qs = qs.filter(year=year_int)
+        except ValueError:
+            return Response(
+                {"detail": "year must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    # -------- nodes --------
+    nodes = []
+    for c in qs:
+        nodes.append({
+            "id": c.id,
+            "code": c.code,
+            "name": c.name,
+            "credits": float(c.credits),
+            "year": c.year,
+            "semester": c.semester,
+        })
+
+    # -------- edges (prerequisites) --------
+    edges = []
+    course_ids = {c.id for c in qs}  # so we only connect inside this dept/year filter
+
+    for c in qs:
+        for p in c.prerequisites.all():
+            if p.id in course_ids:
+                edges.append({
+                    "from": p.id,   # prerequisite course
+                    "to": c.id,     # target course
+                })
+
+    return Response({"nodes": nodes, "edges": edges}, status=status.HTTP_200_OK)
+
+
+
+# backend/api/views.py
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Course
+
+
+class CourseAIInsightsView(APIView):
+    """
+    GET /api/department-admin/courses/<pk>/ai-insights/
+
+    Returns a small "AI-like" analysis of the course in the curriculum graph:
+    - How central it is
+    - How strong its prerequisites chain is
+    - Suggestions for the curriculum designer
+    """
+
+    def get(self, request, pk):
+        try:
+            course = Course.objects.get(pk=pk)
+        except Course.DoesNotExist:
+            return Response(
+                {"detail": "Course not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # prerequisites: direct prereqs of this course
+        prereqs = list(course.prerequisites.all().order_by("year", "semester", "code"))
+
+        # dependents: courses that list THIS course as a prerequisite
+        dependents = list(course.unlocks.all().order_by("year", "semester", "code"))
+
+        # --- build summaries ---
+        summary = (
+            f"{course.code} – {course.name} is a Year {course.year} "
+            f"course (Semester {course.semester}) worth {course.credits} credits."
+        )
+
+        if prereqs:
+            prereq_strings = [
+                f"{p.code} ({p.name}) – Year {p.year}, Sem {p.semester}"
+                for p in prereqs
+            ]
+            prereq_summary = (
+                "This course requires the following prerequisites: "
+                + "; ".join(prereq_strings)
+                + "."
+            )
+        else:
+            prereq_summary = (
+                "This course currently has no formal prerequisites and can be taken as a standalone course."
+            )
+
+        if dependents:
+            dep_strings = [
+                f"{d.code} ({d.name}) – Year {d.year}, Sem {d.semester}"
+                for d in dependents
+            ]
+            dependents_summary = (
+                "The following courses depend on this course: "
+                + "; ".join(dep_strings)
+                + "."
+            )
+        else:
+            dependents_summary = (
+                "No other courses currently list this course as a direct prerequisite."
+            )
+
+        # --- simple "AI-like" risk & recommendations (rule-based, no external API) ---
+        risk_notes = []
+        recommendations = []
+
+        # central course?
+        if len(dependents) >= 3:
+            risk_notes.append(
+                "This is a central course in the curriculum – changes to its syllabus will impact many later courses."
+            )
+
+        # no prereqs but late year?
+        if not prereqs and course.year >= 3:
+            risk_notes.append(
+                "This is an advanced-year course without prerequisites – consider whether earlier courses provide enough preparation."
+            )
+
+        # prereqs from the same or later year (suspicious)
+        weird_prereqs = [
+            p
+            for p in prereqs
+            if (p.year > course.year)
+            or (p.year == course.year and p.semester >= course.semester)
+        ]
+        if weird_prereqs:
+            names = ", ".join([p.code for p in weird_prereqs])
+            risk_notes.append(
+                f"Some prerequisites ({names}) are in the same or a later semester/year – verify that the dependency order is correct."
+            )
+
+        # recommendations (generic but useful)
+        if prereqs:
+            recommendations.append(
+                "Ensure that the learning outcomes of all prerequisite courses are explicitly referenced in this course syllabus."
+            )
+
+        if dependents:
+            recommendations.append(
+                "In the syllabus, highlight which topics are especially important for succeeding in the follow-up courses."
+            )
+
+        if not recommendations:
+            recommendations.append(
+                "This course is relatively isolated in the dependency graph; you may use it flexibly as an elective or entry point."
+            )
+
+        return Response(
+            {
+                "summary": summary,
+                "prerequisites_summary": prereq_summary,
+                "dependents_summary": dependents_summary,
+                "risk_notes": risk_notes,
+                "recommendations": recommendations,
+            },
+            status=status.HTTP_200_OK,
+        )

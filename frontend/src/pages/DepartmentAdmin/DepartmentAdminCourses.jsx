@@ -464,6 +464,22 @@ export default function DepartmentAdminCourses() {
           );
         })}
       </div>
+                  {/* Diagram button */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={!departmentId}
+          onClick={() =>
+            navigate(
+              `/department-admin/course-diagram?departmentId=${departmentId}`
+            )
+          }
+          className="mt-2 inline-flex items-center gap-1 px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-semibold shadow hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          View Curriculum Diagram
+        </button>
+      </div>
+
 
       {/* Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.5fr,1.5fr] gap-6">
@@ -768,34 +784,51 @@ export default function DepartmentAdminCourses() {
               </div>
 
               {/* prerequisites from ALL years */}
-              <div>
-                <label className="block font-semibold text-emerald-900 mb-1">
-                  Prerequisites (optional)
-                </label>
-                <select
-                  multiple
-                  value={form.prerequisiteIds}
-                  onChange={(e) =>
-                    handleFormChange(
-                      "prerequisiteIds",
-                      Array.from(e.target.selectedOptions).map(
-                        (o) => o.value
-                      )
-                    )
-                  }
-                  className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 h-20"
-                >
-                  {filteredPrereqOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[10px] text-emerald-800/80">
-                  Students must pass all selected courses before registering to
-                  this course.
-                </p>
-              </div>
+<div>
+  <div className="flex items-center justify-between mb-1">
+    <label className="block font-semibold text-emerald-900">
+      Prerequisites (optional)
+    </label>
+
+    {isEditing && (
+      <button
+        type="button"
+        onClick={() =>
+          handleFormChange("prerequisiteIds", [])
+        }
+        className="text-[10px] text-emerald-800 underline underline-offset-2"
+      >
+        Clear all
+      </button>
+    )}
+  </div>
+
+  <select
+    multiple
+    value={form.prerequisiteIds}
+    onChange={(e) =>
+      handleFormChange(
+        "prerequisiteIds",
+        Array.from(e.target.selectedOptions).map((o) => o.value)
+      )
+    }
+    className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 h-20"
+  >
+    {filteredPrereqOptions.map((p) => (
+      <option key={p.id} value={p.id}>
+        {p.label}
+      </option>
+    ))}
+  </select>
+
+  <p className="mt-1 text-[10px] text-emerald-800/80">
+    Select prerequisite courses if needed. Leave this list empty (or
+    use “Clear all” when editing) if the course has no prerequisites.
+    Students must pass all selected courses before registering to this
+    course.
+  </p>
+</div>
+
 
               {createError && (
                 <p className="text-[11px] text-red-700 bg-red-100 border border-red-300 rounded-lg px-3 py-2">

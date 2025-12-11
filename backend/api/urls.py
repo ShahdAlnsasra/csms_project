@@ -20,6 +20,7 @@ from .views import (
     DepartmentAdminRequestDecision,
     DepartmentAdminCourseListCreate,
     get_department_lecturers,
+    department_course_graph,
     
 )
 
@@ -72,7 +73,16 @@ urlpatterns = [
         DepartmentAdminCourseDetail.as_view(),
         name="department-admin-course-detail",
     ),
-    
+    path(
+        "department-admin/course-graph/",
+        department_course_graph,
+        name="department-course-graph",
+    ),
+     path(
+        "department-admin/courses/<int:pk>/ai-insights/",
+        views.CourseAIInsightsView.as_view(),
+        name="course-ai-insights",
+    ),
     
 ]
 

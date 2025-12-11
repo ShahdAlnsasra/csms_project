@@ -22,6 +22,8 @@ import UserProfile from "./components/UserProfile";
 import DepartmentAdminLayout from "./components/DepartmentAdminLayout";
 import DepartmentAdminRequests from "./pages/DepartmentAdmin/DepartmentAdminRequests";
 import DepartmentAdminCourses from "./pages/DepartmentAdmin/DepartmentAdminCourses";
+import DeptCourseDiagramPage from "./pages/DepartmentAdmin/DeptCourseDiagramPage";
+import DepartmentAdminCourseDetail from "./pages/DepartmentAdmin/DepartmentAdminCourseDetail";
 
 
 function App() {
@@ -82,8 +84,16 @@ function App() {
           <Route path="requests" element={<DepartmentAdminRequests />} />
           <Route path="profile" element={<UserProfile />} />
           <Route path="/department-admin/courses" element={<DepartmentAdminCourses />}/>
+          <Route
+           path="/department-admin/course-diagram"
+           element={<DeptCourseDiagramPage />}
+           />
+           <Route
+            path="/department-admin/courses/:courseId"
+            element={<DepartmentAdminCourseDetail />}
+           />
         </Route>
-        
+         
           </Routes>
         </div>
 
