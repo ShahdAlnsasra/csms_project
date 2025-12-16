@@ -15,6 +15,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import Department
+
+# Lecturer / syllabus utilities
+from .models import Syllabus
+from .serializers import SyllabusSerializer
 from .serializers import DepartmentSerializer
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
@@ -22,6 +26,10 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from django.db.models import Q
 from .serializers import DepartmentSerializer, SignupRequestSerializer
+
+# Lecturer / syllabus
+from .models import Syllabus
+from .serializers import SyllabusSerializer
 
 
 
@@ -1533,3 +1541,244 @@ class CourseAIInsightsView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# ========= Lecturer APIs =========
+@api_view(["GET"])
+def lecturer_courses(request):
+    """
+    GET /api/lecturer/courses/?lecturer_id=...&department_id=...&year=...
+    מחזיר את הקורסים של המרצה כולל סטטוס הסילבוס האחרון שהמרצה העלה.
+    """
+    lecturer_id = request.query_params.get("lecturer_id")
+    department_id = request.query_params.get("department_id")
+    year = request.query_params.get("year")
+
+    if not lecturer_id:
+        return Response({"detail": "lecturer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = Course.objects.filter(lecturers__id=lecturer_id)
+    if department_id:
+        qs = qs.filter(department_id=department_id)
+
+    if year:
+        try:
+            qs = qs.filter(year=int(year))
+        except ValueError:
+            return Response({"detail": "year must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = qs.select_related("department").prefetch_related("syllabuses").order_by("year", "semester", "code")
+
+    data = []
+    for course in qs:
+        last_syllabus = (
+            course.syllabuses.filter(uploaded_by_id=lecturer_id)
+            .order_by("-updated_at")
+            .first()
+        )
+        data.append(
+            {
+                "id": course.id,
+                "name": course.name,
+                "code": course.code,
+                "year": course.year,
+                "semester": course.semester,
+                "department": course.department_id,
+                "latest_syllabus": SyllabusSerializer(last_syllabus).data if last_syllabus else None,
+            }
+        )
+
+    return Response(data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def lecturer_syllabuses(request):
+    """
+    GET /api/lecturer/syllabuses/?lecturer_id=...&course_id=...&status=...&year=...
+    מחזיר את כל גרסאות הסילבוסים שהמרצה יצר, עם אפשרות סינון.
+    """
+    lecturer_id = request.query_params.get("lecturer_id")
+    course_id = request.query_params.get("course_id")
+    status_filter = request.query_params.get("status")
+    year = request.query_params.get("year")
+
+    if not lecturer_id:
+        return Response({"detail": "lecturer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = Syllabus.objects.filter(uploaded_by_id=lecturer_id).select_related("course")
+
+    if course_id:
+        qs = qs.filter(course_id=course_id)
+
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+
+    if year:
+        try:
+            qs = qs.filter(course__year=int(year))
+        except ValueError:
+            return Response({"detail": "year must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = qs.order_by("-updated_at")
+
+    serializer = SyllabusSerializer(qs, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+from .models import Syllabus
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+@api_view(["GET"])
+def get_syllabus_statuses(request):
+    # מחזיר את ה-choices של Syllabus.status
+    statuses = [{"value": v, "label": lbl} for (v, lbl) in Syllabus.status_choices]
+    return Response({"statuses": statuses})
+
+from .models import Course
+
+@api_view(["GET"])
+def get_course_semesters(request):
+    semesters = [{"value": v, "label": lbl} for (v, lbl) in Course.semester_choices]
+    return Response({"semesters": semesters})
+from django.db.models import F
+
+@api_view(["GET"])
+def lecturer_syllabus_filters(request):
+    lecturer_id = request.query_params.get("lecturer_id")
+    course_id = request.query_params.get("course_id")
+    if not lecturer_id or not course_id:
+        return Response({"detail": "lecturer_id and course_id are required."}, status=400)
+
+    qs = Syllabus.objects.filter(uploaded_by_id=lecturer_id, course_id=course_id).select_related("course")
+
+    statuses = list(qs.values_list("status", flat=True).distinct())
+    years = list(qs.values_list("course__year", flat=True).distinct())
+    semesters = list(qs.values_list("course__semester", flat=True).distinct())
+
+    return Response({
+        "statuses": statuses,
+        "years": sorted([y for y in years if y is not None]),
+        "semesters": semesters,
+    })
+
+
+# views.py
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Max
+from .models import Syllabus, Course, User
+
+@api_view(["POST"])
+def create_lecturer_syllabus(request):
+    lecturer_id = request.data.get("lecturer_id")
+    course_id = request.data.get("course_id")
+    content = request.data.get("content")   # string (JSON)
+    save_as = request.data.get("save_as")   # "DRAFT" / "SUBMIT"
+
+    if not lecturer_id or not course_id or content is None:
+        return Response({"detail": "lecturer_id, course_id, content are required."}, status=400)
+
+    try:
+        Course.objects.get(id=course_id)
+        User.objects.get(id=lecturer_id)
+    except:
+        return Response({"detail": "Invalid lecturer/course."}, status=400)
+
+    last_v = Syllabus.objects.filter(course_id=course_id, uploaded_by_id=lecturer_id).aggregate(Max("version"))["version__max"] or 0
+    new_version = last_v + 1
+
+    status_value = "DRAFT" if save_as == "DRAFT" else "PENDING_REVIEW"
+
+    s = Syllabus.objects.create(
+        course_id=course_id,
+        uploaded_by_id=lecturer_id,
+        version=new_version,
+        status=status_value,
+        content=content,
+    )
+    return Response(SyllabusSerializer(s).data, status=status.HTTP_201_CREATED)
+
+
+# ---------- Helper endpoints (statuses / semesters) ----------
+@api_view(["GET"])
+def syllabus_statuses(request):
+    statuses = [value for value, _ in Syllabus.status_choices]
+    return Response({"statuses": statuses}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def course_semesters(request):
+    semesters = [value for value, _ in Course.semester_choices]
+    return Response({"semesters": semesters}, status=status.HTTP_200_OK)
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_syllabus_statuses(request):
+    # אם הסטטוסים אצלך הם “choices” במודל:
+    # דוגמה: SyllabusVersion.STATUS_CHOICES = [(...), (...)]
+    from .models import SyllabusVersion
+
+    # נסי אחד מהשניים (תשאירי את מה שמתאים למודל שלך):
+
+    # אופציה A: STATUS_CHOICES קלאסי
+    if hasattr(SyllabusVersion, "STATUS_CHOICES"):
+        data = [{"value": k, "label": v} for k, v in SyllabusVersion.STATUS_CHOICES]
+        return Response(data)
+
+    # אופציה B: Django TextChoices (Status.choices)
+    if hasattr(SyllabusVersion, "Status"):
+        data = [{"value": k, "label": v} for k, v in SyllabusVersion.Status.choices]
+        return Response(data)
+
+    # fallback אם אין לך choices (עדיף לא להגיע לפה)
+    return Response([
+        {"value": "APPROVED", "label": "Approved"},
+        {"value": "REJECTED", "label": "Rejected"},
+        {"value": "PENDING_REVIEW", "label": "Pending review"},
+        {"value": "PENDING_DEPT", "label": "Pending dept"},
+    ])
+
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_history_years(request):
+    from .models import SyllabusVersion  # או השם אצלך
+
+    # דוגמה: אם יש שדה academic_year בגרסת סילבוס
+    qs = (
+        SyllabusVersion.objects
+        .filter(author=request.user)          # או created_by / lecturer וכו'
+        .values_list("academic_year", flat=True)
+        .distinct()
+        .order_by("-academic_year")
+    )
+    return Response(list(qs))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_history_courses(request):
+    from .models import SyllabusVersion, Course  # להתאים לשמות אצלך
+
+    # דוגמה: אם לגרסת סילבוס יש FK בשם course
+    course_ids = (
+        SyllabusVersion.objects
+        .filter(author=request.user)
+        .values_list("course_id", flat=True)
+        .distinct()
+    )
+
+    courses = Course.objects.filter(id__in=course_ids).order_by("name")
+    data = [{"id": c.id, "name": c.name} for c in courses]
+    return Response(data)

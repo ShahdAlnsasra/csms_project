@@ -76,6 +76,7 @@ class Syllabus(models.Model):
     content = models.TextField()
 
     status_choices = [
+        ("DRAFT", "Draft"),
         ("PENDING_REVIEW", "Pending Reviewer Approval"),
         ("PENDING_DEPT", "Pending Department Approval"),
         ("APPROVED", "Approved"),
@@ -302,3 +303,13 @@ class MagicLink(models.Model):
         return self.expires_at < timezone.now()
     def __str__(self):
         return f"MagicLink for {self.user.email}"
+
+
+# models.py (Syllabus.status_choices)
+status_choices = [
+    ("DRAFT", "Draft"),
+    ("PENDING_REVIEW", "Pending Reviewer Approval"),
+    ("PENDING_DEPT", "Pending Department Approval"),
+    ("APPROVED", "Approved"),
+    ("REJECTED", "Rejected"),
+]

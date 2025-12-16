@@ -1,6 +1,8 @@
 // frontend/src/components/RoleAwareNavbar.jsx
 import React from "react";
 import { SystemAdminNavbar } from "./SystemAdminLayout";
+import { DepartmentAdminNavbar } from "./DepartmentAdminLayout";
+import { LecturerNavbar } from "./LecturerLayout";
 
 // Navbar פשוט לכל מי שלא System Admin / לא מחובר
 function PublicNavbar() {
@@ -31,6 +33,12 @@ export default function RoleAwareNavbar() {
 
   if (role === "SYSTEM_ADMIN") {
     return <SystemAdminNavbar />;
+  }
+  if (role === "DEPARTMENT_ADMIN") {
+    return <DepartmentAdminNavbar />;
+  }
+  if (role === "LECTURER") {
+    return <LecturerNavbar />;
   }
 
   return <PublicNavbar />;

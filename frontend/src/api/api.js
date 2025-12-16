@@ -269,3 +269,62 @@ export async function fetchCourseAIInsights(courseId) {
   const res = await API.get(`department-admin/courses/${courseId}/ai-insights/`);
   return res.data;
 }
+
+// ===== Lecturer – dynamic data =====
+export async function fetchLecturerCourses({ lecturerId, departmentId, year }) {
+  if (!lecturerId) return [];
+  const params = { lecturer_id: lecturerId };
+  if (departmentId) params.department_id = departmentId;
+  if (year) params.year = year;
+  const res = await API.get("lecturer/courses/", { params });
+  return res.data || [];
+}
+
+export async function fetchLecturerCourseById({ lecturerId, courseId }) {
+  if (!lecturerId || !courseId) return null;
+  const res = await API.get("lecturer/courses/", {
+    params: { lecturer_id: lecturerId },
+  });
+  const list = res.data || [];
+  return list.find((c) => String(c.id) === String(courseId)) || null;
+}
+
+export async function fetchLecturerSyllabuses({ lecturerId, courseId, status, year }) {
+  if (!lecturerId) return [];
+  const params = { lecturer_id: lecturerId };
+  if (courseId) params.course_id = courseId;
+  if (status) params.status = status;
+  if (year) params.year = year;
+  const res = await API.get("lecturer/syllabuses/", { params });
+  return res.data || [];
+}
+
+
+
+export async function fetchSyllabusStatuses() {
+  const res = await API.get("syllabus-statuses/");
+  return res.data?.statuses || [];
+}
+
+export async function fetchCourseSemesters() {
+  const res = await API.get("course-semesters/");
+  return res.data?.semesters || [];
+}
+
+export async function fetchLecturerSyllabusFilters({ lecturerId, courseId }) {
+  const res = await API.get("lecturer/syllabuses/filters/", {
+    params: { lecturer_id: lecturerId, course_id: courseId },
+  });
+  return res.data || { statuses: [], years: [], semesters: [] };
+}
+
+
+export async function createLecturerSyllabus({ lecturerId, courseId, payload, saveAs }) {
+  const res = await API.post("lecturer/syllabuses/create/", {
+    lecturer_id: lecturerId,
+    course_id: courseId,
+    content: JSON.stringify(payload),
+    save_as: saveAs, // "DRAFT" | "SUBMIT"
+  });
+  return res.data;
+}

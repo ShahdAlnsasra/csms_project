@@ -100,7 +100,7 @@ class LecturerMiniSerializer(serializers.ModelSerializer):
 
 # backend/api/serializers.py (or wherever it is)
 from rest_framework import serializers
-from .models import Course, User
+from .models import Course, User, Syllabus
 
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -198,3 +198,31 @@ class CourseSerializer(serializers.ModelSerializer):
                 }
             )
         return result
+
+
+class SyllabusSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True)
+    course_code = serializers.CharField(source="course.code", read_only=True)
+    course_year = serializers.IntegerField(source="course.year", read_only=True)
+    course_semester = serializers.CharField(source="course.semester", read_only=True)
+    department_id = serializers.IntegerField(source="course.department_id", read_only=True)
+
+    class Meta:
+        model = Syllabus
+        fields = [
+            "id",
+            "course",
+            "course_name",
+            "course_code",
+            "course_year",
+            "course_semester",
+            "department_id",
+            "version",
+            "status",
+            "reviewer_comment",
+            "created_at",
+            "updated_at",
+            "uploaded_by",
+            "content",
+        ]
+        read_only_fields = ["created_at", "updated_at", "uploaded_by"]

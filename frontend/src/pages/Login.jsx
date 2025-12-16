@@ -25,6 +25,8 @@ export default function Login() {
         navigate("/system-admin");
       } else if (user.role === "DEPARTMENT_ADMIN") {
         navigate("/department-admin/dashboard");
+      } else if (user.role === "LECTURER") {
+        navigate("/lecturer/dashboard");
       } else {
         navigate("/");
       }

@@ -21,6 +21,12 @@ from .views import (
     DepartmentAdminCourseListCreate,
     get_department_lecturers,
     department_course_graph,
+    lecturer_courses,
+    lecturer_syllabuses,
+    syllabus_statuses,
+    course_semesters,
+    lecturer_syllabus_filters,
+    create_lecturer_syllabus,
     
 )
 
@@ -34,6 +40,13 @@ urlpatterns = [
     path("departments/<int:dept_id>/years/", views.get_years_for_department, name="dept-years"),
     path("semesters/", views.get_semesters, name="semesters"),
     path("activate/<uuid:token>/", views.activate_with_magic_link, name="activate"),
+    path("syllabus-statuses/", syllabus_statuses, name="syllabus-statuses"),
+    path("course-semesters/", course_semesters, name="course-semesters"),
+    path("lecturer/syllabuses/filters/", lecturer_syllabus_filters, name="lecturer-syllabuses-filters"),
+    path("lecturer/syllabuses/create/", create_lecturer_syllabus, name="create-lecturer-syllabus"),
+    # Lecturer
+    path("lecturer/courses/", lecturer_courses, name="lecturer-courses"),
+    path("lecturer/syllabuses/", lecturer_syllabuses, name="lecturer-syllabuses"),
 
 
     # ====== SYSTEM ADMIN API ======
@@ -83,6 +96,12 @@ urlpatterns = [
         views.CourseAIInsightsView.as_view(),
         name="course-ai-insights",
     ),
+    path("syllabus-statuses/", views.syllabus_statuses, name="syllabus-statuses"),
+    path("course-semesters/", views.course_semesters, name="course-semesters"),
+    path("lecturer/syllabuses/filters/", views.lecturer_syllabus_filters),
+    path("lecturer/syllabuses/create/", views.create_lecturer_syllabus),
+
+
     
 ]
 

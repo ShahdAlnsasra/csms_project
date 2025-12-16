@@ -24,6 +24,14 @@ import DepartmentAdminRequests from "./pages/DepartmentAdmin/DepartmentAdminRequ
 import DepartmentAdminCourses from "./pages/DepartmentAdmin/DepartmentAdminCourses";
 import DeptCourseDiagramPage from "./pages/DepartmentAdmin/DeptCourseDiagramPage";
 import DepartmentAdminCourseDetail from "./pages/DepartmentAdmin/DepartmentAdminCourseDetail";
+import LecturerLayout from "./components/LecturerLayout";
+import LecturerDashboard from "./pages/Lecturer/LecturerDashboard";
+import LecturerHistory from "./pages/Lecturer/LecturerHistory";
+import LecturerCourses from "./pages/Lecturer/LecturerCourses";
+import LecturerCourseVersions from "./pages/Lecturer/LecturerCourseVersions";
+import LecturerSyllabusDetails from "./pages/Lecturer/LecturerSyllabusDetails";
+import LecturerSyllabusEdit from "./pages/Lecturer/LecturerSyllabusEdit";
+import LecturerSyllabusNew from "./pages/Lecturer/LecturerSyllabusNew";
 
 
 function App() {
@@ -93,6 +101,24 @@ function App() {
             element={<DepartmentAdminCourseDetail />}
            />
         </Route>
+         {/* Lecturer area */}
+         <Route path="/lecturer" element={<LecturerLayout />}>
+           <Route index element={<LecturerDashboard />} />
+           <Route path="dashboard" element={<LecturerDashboard />} />
+           <Route path="history" element={<LecturerHistory />} />
+           <Route path="courses" element={<LecturerCourses />} />
+           <Route path="courses/:courseId" element={<LecturerCourseVersions />} />
+           <Route path="courses/:courseId/new" element={<LecturerSyllabusNew />} />
+           <Route
+             path="courses/:courseId/versions/:versionId"
+             element={<LecturerSyllabusDetails />}
+           />
+           <Route
+             path="courses/:courseId/versions/:versionId/edit"
+             element={<LecturerSyllabusEdit />}
+           />
+           <Route path="profile" element={<UserProfile />} />
+         </Route>
          
           </Routes>
         </div>
