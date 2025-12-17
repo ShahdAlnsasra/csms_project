@@ -212,6 +212,7 @@ class SyllabusSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "course",
+            "course_id",
             "course_name",
             "course_code",
             "course_year",

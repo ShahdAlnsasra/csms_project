@@ -7,110 +7,108 @@ import {
   ArrowRightIcon,
 } from "@heroicons/react/24/solid";
 
-const highlightCards = [
-  {
-    title: "History",
-    description:
-      "Review every syllabus version you created, filter by status, year, or course, and keep a clean audit trail.",
-    icon: ClockIcon,
-    action: "Open history",
-    href: "/lecturer/history",
-    accent: "from-indigo-500 via-purple-500 to-fuchsia-500",
-  },
-  {
-    title: "Courses",
-    description:
-      "See your current semester courses with live syllabus status. Jump in to add, edit, or reuse any version.",
-    icon: BookOpenIcon,
-    action: "View courses",
-    href: "/lecturer/courses",
-    accent: "from-sky-500 via-cyan-500 to-emerald-500",
-  },
-];
-
 export default function LecturerDashboard() {
   const navigate = useNavigate();
 
   return (
     <div className="space-y-8">
-      <div className="bg-gradient-to-r from-indigo-50 via-white to-sky-50 border border-slate-200 rounded-3xl p-6 md:p-8 shadow-lg shadow-indigo-100/60 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none opacity-60 blur-[120px]"
-          style={{
-            background:
-              "radial-gradient(circle at 20% 30%, rgba(79,70,229,0.12), transparent 35%), radial-gradient(circle at 80% 10%, rgba(56,189,248,0.12), transparent 35%), radial-gradient(circle at 60% 80%, rgba(16,185,129,0.12), transparent 40%)",
-          }}
-        />
-        <div className="relative flex flex-col gap-4">
-          <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-700 bg-white/70 backdrop-blur px-3 py-1 rounded-full border border-indigo-100 shadow-sm">
-            <SparklesIcon className="h-4 w-4" />
-            Lecturer dashboard
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 leading-tight">
-            Manage your syllabuses with clarity and creative AI support
-          </h1>
-          <p className="text-slate-700 max-w-3xl">
-            Quick access to your history, active courses, and AI-assisted editing.
-            Stay aligned with department expectations while keeping your style.
-          </p>
-          <div className="flex flex-wrap gap-3 text-sm text-slate-700">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Secure logout & session cleanup
-            </span>
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-indigo-500" />
-              AI prompts for faster updates
-            </span>
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-amber-500" />
-              Versioned history with filters
-            </span>
-          </div>
-        </div>
-      </div>
+      {/* Intro section – aligned with Department Admin style */}
+      <section className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-indigo-500 flex items-center gap-2">
+          <SparklesIcon className="h-4 w-4" />
+          Lecturer
+        </p>
+        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">
+          Lecturer Dashboard
+        </h1>
+        <p className="text-sm md:text-base text-slate-600 max-w-3xl">
+          Access your syllabus history, current courses, and AI-assisted editing
+          tools – all within the same calm, academic workspace as the
+          department admin.
+        </p>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {highlightCards.map((card) => (
-          <button
-            key={card.title}
-            type="button"
-            onClick={() => navigate(card.href)}
-            className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-200/70 text-left p-6 transition hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          >
-            <div
-              className={`absolute inset-0 opacity-70 blur-2xl bg-gradient-to-br ${card.accent}`}
-            />
-            <div className="relative flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`h-11 w-11 rounded-2xl bg-gradient-to-br ${card.accent} flex items-center justify-center text-white shadow-lg shadow-indigo-200`}
-                  >
-                    <card.icon className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {card.title}
-                    </h3>
-                    <p className="text-xs uppercase tracking-[0.2em] text-indigo-700">
-                      Always available
-                    </p>
-                  </div>
-                </div>
-                <ArrowRightIcon className="h-5 w-5 text-slate-500 group-hover:translate-x-1 transition" />
+        <div className="mt-4 flex flex-wrap gap-2 text-[11px]">
+          <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 font-medium text-indigo-700 border border-indigo-100">
+            <ClockIcon className="mr-1.5 h-3.5 w-3.5" />
+            Versioned syllabus history
+          </span>
+          <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700 border border-emerald-100">
+            <BookOpenIcon className="mr-1.5 h-3.5 w-3.5" />
+            Courses per year &amp; semester
+          </span>
+        </div>
+      </section>
+
+      {/* Main cards – visually in harmony with DepartmentAdminDashboard */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* History card */}
+        <button
+          type="button"
+          onClick={() => navigate("/lecturer/history")}
+          className="group text-left rounded-3xl bg-white shadow-xl border border-slate-200/80 hover:border-indigo-200 hover:shadow-indigo-100 transition overflow-hidden flex flex-col"
+        >
+          <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-indigo-50 flex items-center justify-center shadow-sm">
+                <ClockIcon className="h-6 w-6 text-indigo-600" />
               </div>
-              <p className="text-sm text-slate-700 leading-relaxed">
-                {card.description}
-              </p>
-              <div className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-700 group-hover:text-indigo-600">
-                {card.action}
-                <ArrowRightIcon className="h-4 w-4" />
+              <div>
+                <h2 className="text-base md:text-lg font-semibold text-slate-900">
+                  Syllabus history
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 max-w-xs">
+                  Review all versions you&apos;ve created, filter by year,
+                  course, or status, and keep a clean audit trail.
+                </p>
               </div>
             </div>
-          </button>
-        ))}
-      </div>
+
+            <ArrowRightIcon className="h-5 w-5 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition" />
+          </div>
+
+          <div className="px-6 pb-5 space-y-3 text-xs">
+            <ul className="list-disc list-inside text-[11px] text-slate-600 space-y-1.5">
+              <li>Search by course name or syllabus content.</li>
+              <li>Use filters to focus on approved, pending, or rejected items.</li>
+              <li>Open any version in a safe, read-only view.</li>
+            </ul>
+          </div>
+        </button>
+
+        {/* Courses card */}
+        <button
+          type="button"
+          onClick={() => navigate("/lecturer/courses")}
+          className="group text-left rounded-3xl bg-white shadow-xl border border-slate-200/80 hover:border-emerald-200 hover:shadow-emerald-100 transition overflow-hidden flex flex-col"
+        >
+          <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-emerald-50 flex items-center justify-center shadow-sm">
+                <BookOpenIcon className="h-6 w-6 text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-base md:text-lg font-semibold text-slate-900">
+                  Courses &amp; syllabuses
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 max-w-xs">
+                  See your assigned courses, check syllabus status, and jump
+                  directly into editing or creating new versions.
+                </p>
+              </div>
+            </div>
+
+            <ArrowRightIcon className="h-5 w-5 text-slate-400 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition" />
+          </div>
+
+          <div className="px-6 pb-5 space-y-3 text-xs">
+            <ul className="list-disc list-inside text-[11px] text-slate-600 space-y-1.5">
+              <li>Overview of current and upcoming semester courses.</li>
+              <li>See which syllabuses are drafts, submitted, or approved.</li>
+              <li>Reuse previous versions as a starting point for updates.</li>
+            </ul>
+          </div>
+        </button>
+      </section>
     </div>
   );
 }
-

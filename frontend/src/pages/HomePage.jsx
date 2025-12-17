@@ -59,7 +59,7 @@
 // }
 
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useLocation } from "react-router-dom";
 
 const stats = [
@@ -109,17 +109,6 @@ const featureCards = [
 
 export default function Home() {
   const location = useLocation();
-  const [logoutMessage, setLogoutMessage] = useState("");
-
-  useEffect(() => {
-    const stored = sessionStorage.getItem("csmsLogoutMessage");
-    if (stored) {
-      setLogoutMessage(stored);
-      sessionStorage.removeItem("csmsLogoutMessage");
-    } else if (location.state?.message) {
-      setLogoutMessage(location.state.message);
-    }
-  }, [location.state]);
 
   const scrollToSection = (id) => {
     const el = document.getElementById(id);
@@ -130,14 +119,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900">
-      {logoutMessage && (
-        <div className="bg-emerald-50 border-b border-emerald-100 text-emerald-800 text-sm">
-          <div className="max-w-6xl mx-auto px-5 py-2 flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            {logoutMessage}
-          </div>
-        </div>
-      )}
       {/* subtle pattern overlay */}
       <div className="pointer-events-none fixed inset-0 opacity-[0.18] mix-blend-multiply"
         style={{

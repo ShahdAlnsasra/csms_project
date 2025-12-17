@@ -23,6 +23,7 @@ from .serializers import DepartmentSerializer
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from .serializers import SyllabusSerializer
 
 from django.db.models import Q
 from .serializers import DepartmentSerializer, SignupRequestSerializer
