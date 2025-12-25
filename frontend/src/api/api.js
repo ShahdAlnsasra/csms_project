@@ -5,33 +5,29 @@ import axios from "axios";
 const API = axios.create({
   baseURL: "http://127.0.0.1:8000/api/",
 });
+// ✅ Add auth token automatically (JWT/Token)
+API.interceptors.request.use((config) => {
+  const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
+
+  // תומך בהרבה שמות אפשריים של טוקן
+  const token =
+    user?.access ||
+    user?.token ||
+    user?.key ||
+    user?.auth_token ||
+    localStorage.getItem("access") ||
+    localStorage.getItem("token");
+
+  if (token) {
+    const t = String(token);
+    const isJwt = t.split(".").length === 3; // JWT usually has 3 parts
+    config.headers.Authorization = isJwt ? `Bearer ${t}` : `Token ${t}`;
+  }
+
+  return config;
+});
 
 export default API;
-// export async function signup(form) {
-//   const payload = {
-//     first_name: form.firstName?.trim(),
-//     last_name: form.lastName?.trim(),
-//     email: form.email?.trim(),
-//     phone: form.phone?.trim(),
-//     role: form.role,
-//     department: form.department || null,
-//     study_year:
-//       form.role === "STUDENT" && form.studyYear
-//         ? Number(form.studyYear)
-//         : null,
-//     semester:
-//       form.role === "STUDENT" && form.semester
-//         ? String(form.semester)
-//         : null,
-//   };
-
-//   console.log("signup payload >>>", payload);
-//   const res = await API.post("signup/", payload);
-//   return res.data;
-// }
-
-
-// api.js
 
 
 export async function signup(form) {
@@ -271,7 +267,7 @@ export async function fetchCourseAIInsights(courseId) {
 }
 
 // ===== Lecturer – dynamic data =====
-export async function fetchLecturerCourses({ lecturerId, departmentId, year }) {
+export async function fetchLecturerCourses({ lecturerId, departmentId, year } = {}) {
   if (!lecturerId) return [];
   const params = { lecturer_id: lecturerId };
   if (departmentId) params.department_id = departmentId;
@@ -300,31 +296,178 @@ export async function fetchLecturerSyllabuses({ lecturerId, courseId, status, ye
 }
 
 
-
-export async function fetchSyllabusStatuses() {
-  const res = await API.get("syllabus-statuses/");
-  return res.data?.statuses || [];
-}
-
-export async function fetchCourseSemesters() {
-  const res = await API.get("course-semesters/");
-  return res.data?.semesters || [];
-}
-
+// ===== Lecturer – helpers for filters =====
 export async function fetchLecturerSyllabusFilters({ lecturerId, courseId }) {
+  if (!lecturerId || !courseId) {
+    return { statuses: [], years: []};
+  }
+
   const res = await API.get("lecturer/syllabuses/filters/", {
     params: { lecturer_id: lecturerId, course_id: courseId },
   });
-  return res.data || { statuses: [], years: [], semesters: [] };
+
+  return res.data || { statuses: [], years: []};
 }
 
 
-export async function createLecturerSyllabus({ lecturerId, courseId, payload, saveAs }) {
-  const res = await API.post("lecturer/syllabuses/create/", {
+// ===== Lecturer – create syllabus =====
+// ✅ CREATE syllabus (match backend create_lecturer_syllabus)
+// ✅ Lecturer – create syllabus
+export async function createLecturerSyllabus({ lecturerId, courseId, content, saveAs }) {
+  const isDraft = saveAs === "DRAFT";
+
+  const payload = {
     lecturer_id: lecturerId,
     course_id: courseId,
-    content: JSON.stringify(payload),
-    save_as: saveAs, // "DRAFT" | "SUBMIT"
+    save_as: saveAs,
+    level: "BSC", // אפשר להשאיר תמיד
+  };
+
+  const setIf = (key, val) => {
+    const hasVal = val !== undefined && val !== null && String(val).trim() !== "";
+    if (!isDraft || hasVal) payload[key] = val;
+  };
+
+  setIf("academic_year", content.academicYear);
+  setIf("course_type", content.courseType);
+  setIf("delivery", content.delivery);
+  setIf("instructor_email", content.instructorEmail || "");
+  setIf("language", content.language || "Hebrew");
+
+  setIf("purpose", content.purpose);
+  setIf("learning_outputs", content.learningOutputs);
+  setIf("course_description", content.courseDescription);
+  setIf("literature", content.literature);
+  setIf("teaching_methods_planned", content.teachingMethodsPlanned);
+  setIf("guidelines", content.guidelines);
+
+  // ✅ Draft: לא לשלוח שורות ריקות
+  const weeks = Array.isArray(content?.weeksPlan) ? content.weeksPlan : [];
+  const assessments = Array.isArray(content?.assessments) ? content.assessments : [];
+
+  const weeksFiltered = isDraft
+    ? weeks.filter(w => String(w.topic || "").trim() || String(w.sources || "").trim())
+    : weeks;
+
+  const assessmentsFiltered = isDraft
+    ? assessments.filter(a => String(a.title || "").trim() || String(a.percent || "").trim())
+    : assessments;
+
+  if (!isDraft || weeksFiltered.length) {
+    payload.weeks = weeksFiltered.map((w, i) => ({
+      week_number: Number(w.week || i + 1),
+      topic: w.topic || "",
+      sources: w.sources || "",
+    }));
+  }
+
+  if (!isDraft || assessmentsFiltered.length) {
+    payload.assessments = assessmentsFiltered.map((a) => ({
+      title: a.title || "",
+      percent: Number(a.percent || 0),
+    }));
+  }
+
+  const res = await API.post("lecturer/syllabuses/create/", payload);
+  return res.data;
+}
+
+export async function fetchLecturerSyllabusById({ lecturerId, syllabusId }) {
+  const res = await API.get(`lecturer/syllabuses/${syllabusId}/`, {
+    params: { lecturer_id: lecturerId },
   });
   return res.data;
+}
+export async function updateLecturerSyllabus({ lecturerId, syllabusId, content, saveAs }) {
+  const isDraft = saveAs === "DRAFT";
+
+  const payload = {
+    lecturer_id: lecturerId,
+    save_as: saveAs, // "DRAFT" | "SUBMIT"
+    level: "BSC",
+  };
+
+  const setIf = (key, val) => {
+    const hasVal = val !== undefined && val !== null && String(val).trim() !== "";
+    if (!isDraft || hasVal) payload[key] = val;
+  };
+
+  setIf("academic_year", content.academicYear);
+  setIf("course_type", content.courseType);
+  setIf("delivery", content.delivery);
+  setIf("instructor_email", content.instructorEmail || "");
+  setIf("language", content.language || "Hebrew");
+
+  setIf("purpose", content.purpose);
+  setIf("learning_outputs", content.learningOutputs);
+  setIf("course_description", content.courseDescription);
+  setIf("literature", content.literature);
+  setIf("teaching_methods_planned", content.teachingMethodsPlanned);
+  setIf("guidelines", content.guidelines);
+
+  const weeks = Array.isArray(content?.weeksPlan) ? content.weeksPlan : [];
+  const assessments = Array.isArray(content?.assessments) ? content.assessments : [];
+
+  const weeksFiltered = isDraft
+    ? weeks.filter(w => String(w.topic || "").trim() || String(w.sources || "").trim())
+    : weeks;
+
+  const assessmentsFiltered = isDraft
+    ? assessments.filter(a => String(a.title || "").trim() || String(a.percent || "").trim())
+    : assessments;
+
+  if (!isDraft || weeksFiltered.length) {
+    payload.weeks = weeksFiltered.map((w, i) => ({
+      week_number: Number(w.week || i + 1),
+      topic: w.topic || "",
+      sources: w.sources || "",
+    }));
+  }
+
+  if (!isDraft || assessmentsFiltered.length) {
+    payload.assessments = assessmentsFiltered.map((a) => ({
+      title: a.title || "",
+      percent: Number(a.percent || 0),
+    }));
+  }
+
+  const res = await API.put(
+    `lecturer/syllabuses/${syllabusId}/`,
+    payload,
+    { params: { lecturer_id: lecturerId } }
+  );
+  return res.data;
+}
+
+
+export async function cloneLecturerSyllabus({ syllabusId }) {
+  const res = await API.post(`lecturer/syllabuses/${syllabusId}/clone/`);
+  return res.data; // { draft, created_new, source_id, ... }
+}
+
+
+
+// ===== AI Chat per syllabus (recommended) =====
+
+// history
+export async function fetchSyllabusChatHistory({ syllabusId }) {
+  const res = await API.get(`lecturer/syllabuses/${syllabusId}/chat/`);
+  return res.data || [];
+}
+
+// ask
+export async function askSyllabusAssistant({ syllabusId, message, language, currentDraft }) {
+  if (!syllabusId) throw new Error("syllabusId is required");
+  if (!message) throw new Error("message is required");
+
+  const payload = {
+    message,
+    // language optional (backend can infer from syllabus)
+    ...(language ? { language } : {}),
+    // currentDraft optional (useful especially when REJECTED)
+    ...(currentDraft ? { currentDraft } : {}),
+  };
+
+  const res = await API.post(`lecturer/syllabuses/${syllabusId}/chat/ask/`, payload);
+  return res.data; // { reply, mode }
 }

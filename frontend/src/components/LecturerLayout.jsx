@@ -38,7 +38,11 @@ export function LecturerNavbar() {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, [navigate]);
 
+  // ✅ UPDATED: confirm before logout
   const handleLogout = () => {
+    const ok = window.confirm("Are you sure you want to log out?");
+    if (!ok) return;
+
     localStorage.removeItem("csmsUser");
     localStorage.removeItem(AVATAR_KEY);
     localStorage.removeItem("authToken");
@@ -121,14 +125,16 @@ export function LecturerNavbar() {
           <NavLink to="/lecturer/dashboard" end className={navClass}>
             Home
           </NavLink>
-          <NavLink to="/lecturer/profile" className={navClass}>
-            Profile
-          </NavLink>
           <NavLink to="/lecturer/history" className={navClass}>
             History
           </NavLink>
           <NavLink to="/lecturer/courses" className={navClass}>
             Courses
+          </NavLink>
+
+          {/* ✅ MOVED: Profile at the end of navbar */}
+          <NavLink to="/lecturer/profile" className={navClass}>
+            Profile
           </NavLink>
         </div>
       </nav>
@@ -146,4 +152,3 @@ export default function LecturerLayout() {
     </div>
   );
 }
-

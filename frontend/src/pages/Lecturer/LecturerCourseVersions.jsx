@@ -1,3 +1,4 @@
+// src/pages/Lecturer/LecturerCourseVersions.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -6,11 +7,84 @@ import {
   PlusCircleIcon,
   DocumentMagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
+import FancySelect from "../../components/FancySelect";
 import {
   fetchLecturerSyllabuses,
   fetchLecturerSyllabusFilters,
   fetchLecturerCourseById,
 } from "../../api/api";
+const safeJson = (s) => {
+  try {
+    return typeof s === "string" ? JSON.parse(s) : s;
+  } catch {
+    return null;
+  }
+};
+
+const getAcademicYear = (v) => {
+  if (v?.academic_year) return String(v.academic_year);
+  const j = safeJson(v?.content);
+  return String(j?.academicYear || j?.academicYearComputed || "");
+};
+
+// מחזיר לכל Academic Year:
+// - APPROVED הכי חדש (אם יש)
+// - Work (DRAFT/PENDING/REJECTED) הכי חדש רק אם הוא חדש יותר מה-APPROVED
+const pickApprovedPlusLatestWorkPerYear = (rows = []) => {
+  const map = new Map();
+
+  const normStatus = (x) => String(x?.status || "").toUpperCase();
+  const getUpdated = (x) => String(x?.updated_at || "");
+  const getId = (x) => Number(x?.id || 0);
+
+  const better = (a, b) => {
+    if (!b) return true;
+    const au = getUpdated(a);
+    const bu = getUpdated(b);
+    if (au !== bu) return au > bu;
+    return getId(a) > getId(b); // שובר שוויון
+  };
+
+  const isWork = (st) =>
+    st === "DRAFT" ||
+    st === "PENDING_REVIEW" ||
+    st === "PENDING_DEPT" ||
+    st === "REJECTED";
+
+  for (const v of rows) {
+    const year = getAcademicYear(v);
+    const key = year || `__no_year__${v.id}`;
+
+    const bucket = map.get(key) || { approved: null, work: null };
+    const st = normStatus(v);
+
+    if (st === "APPROVED") {
+      if (better(v, bucket.approved)) bucket.approved = v;
+    } else if (isWork(st)) {
+      if (better(v, bucket.work)) bucket.work = v;
+    }
+
+    map.set(key, bucket);
+  }
+
+  const out = [];
+  for (const [, b] of map.entries()) {
+    // ✅ מציגים Work רק אם הוא חדש יותר מה-Approved
+    if (b.work && (!b.approved || better(b.work, b.approved))) out.push(b.work);
+    if (b.approved) out.push(b.approved);
+  }
+
+  out.sort((a, b) => {
+    const au = getUpdated(a);
+    const bu = getUpdated(b);
+    if (au !== bu) return bu.localeCompare(au);
+    return getId(b) - getId(a);
+  });
+
+  return out;
+};
+
+
 
 const statusColors = {
   APPROVED: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -20,51 +94,86 @@ const statusColors = {
   DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
+const statusLabel = {
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  PENDING_REVIEW: "Pending reviewer",
+  PENDING_DEPT: "Pending department",
+  DRAFT: "Draft",
+};
+
 export default function LecturerCourseVersions() {
   const { courseId } = useParams();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [yearFilter, setYearFilter] = useState("all");
-  const [semesterFilter, setSemesterFilter] = useState("all");
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ statuses: [], years: [], semesters: [] });
+  const [filters, setFilters] = useState({ statuses: [], years: [] });
   const [courseName, setCourseName] = useState("");
-  const navigate = useNavigate();
 
-  const years = useMemo(
-    () => filters.years || Array.from(new Set(items.map((v) => v.course_year || v.year))),
-    [filters.years, items]
+  const navigate = useNavigate();
+  useEffect(() => {
+  const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
+  if (!user) return;
+
+  setLoading(true);
+
+  fetchLecturerSyllabusFilters({ lecturerId: user.id, courseId }).then((data) =>
+    setFilters(data || { statuses: [], years: [] })
   );
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
-    if (!user) return;
-    setLoading(true);
-    fetchLecturerSyllabusFilters({ lecturerId: user.id, courseId }).then((data) =>
-      setFilters(data || { statuses: [], years: [], semesters: [] })
-    );
-    fetchLecturerCourseById({ lecturerId: user.id, courseId }).then((c) =>
-      setCourseName(c?.name || courseId)
-    );
-    fetchLecturerSyllabuses({ lecturerId: user.id, courseId })
-      .then((data) => setItems(data || []))
-      .finally(() => setLoading(false));
-  }, [courseId]);
+  fetchLecturerCourseById({ lecturerId: user.id, courseId }).then((c) =>
+    setCourseName(c?.name || courseId)
+  );
 
-  const filtered = items.filter((v) => {
-    const matchesSearch =
-      (v.course_name || "")
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      (v.content || "").toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || v.status === statusFilter;
-    const matchesYear =
-      yearFilter === "all" || (v.course_year || v.year) === Number(yearFilter);
-    const matchesSemester =
-      semesterFilter === "all" || (v.course_semester || v.semester) === semesterFilter;
-    return matchesSearch && matchesStatus && matchesYear && matchesSemester;
-  });
+  fetchLecturerSyllabuses({ lecturerId: user.id, courseId })
+    .then((data) => {
+      const arr = Array.isArray(data) ? data : data?.results || [];
+      setItems(pickApprovedPlusLatestWorkPerYear(arr)); // ✅ פה הסינון
+    })
+    .finally(() => setLoading(false));
+}, [courseId]);
+
+
+
+  const yearsOptions = useMemo(() => {
+    const ys = filters.years || [];
+    return [
+      { value: "all", label: "Academic Year" },
+      ...ys.map((y) => ({ value: String(y), label: String(y) })),
+    ];
+  }, [filters.years]);
+
+  const statusesOptions = useMemo(() => {
+    const ss = filters.statuses || [];
+    return [
+      { value: "all", label: "Status" },
+      ...ss.map((s) => ({ value: s, label: statusLabel[s] || s })),
+    ];
+  }, [filters.statuses]);
+
+  const filtered = useMemo(() => {
+    return (items || []).filter((v) => {
+      const matchesSearch =
+        (v.course_name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (v.content || "").toLowerCase().includes(search.toLowerCase());
+
+      const matchesStatus = statusFilter === "all" || v.status === statusFilter;
+      const matchesYear = yearFilter === "all" || String(getAcademicYear(v)) === String(yearFilter);
+
+      return matchesSearch && matchesStatus && matchesYear;
+    });
+  }, [items, search, statusFilter, yearFilter]);
+
+  // נשאר רק בשביל הטקסט של הכפתור (Create new version / Create first syllabus)
+  const latest = useMemo(() => {
+    if (!items.length) return null;
+    return [...items].sort((a, b) =>
+      (b.updated_at || "").localeCompare(a.updated_at || "")
+    )[0];
+  }, [items]);
 
   return (
     <div className="space-y-6">
@@ -74,14 +183,14 @@ export default function LecturerCourseVersions() {
           {courseId} • Versions
         </div>
         <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">
-          {courseName || "Course"} • Versions
+          {courseName || "Course"} • Version
         </h1>
         <p className="text-sm text-slate-600 max-w-3xl">
-          Quickly search by status, year, or semester. Open any version to view details
-          or start a new draft with AI assistance.
+          If there is already a syllabus – you can view/edit versions.
         </p>
       </div>
 
+      {/* ❌ מחקנו את Open latest לפי הבקשה שלך */}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -89,15 +198,12 @@ export default function LecturerCourseVersions() {
           className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-indigo-600 to-sky-500 text-white text-sm font-semibold shadow-lg hover:shadow-xl transition"
         >
           <PlusCircleIcon className="h-5 w-5" />
-          Add new syllabus
+          {latest ? "Create new version" : "Create first syllabus"}
         </button>
-        <div className="text-xs text-slate-500">
-          Generate a brand-new syllabus with AI or reuse a prior version.
-        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 md:p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1.4fr,repeat(3,0.6fr)] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1.4fr,repeat(2,0.6fr)] gap-3">
           <div className="relative">
             <MagnifyingGlassIcon className="h-5 w-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -108,51 +214,19 @@ export default function LecturerCourseVersions() {
               className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-3 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 outline-none"
             />
           </div>
-          <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2.5 bg-slate-50/60">
-            <FunnelIcon className="h-5 w-5 text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-transparent text-sm text-slate-800 flex-1 outline-none"
-            >
-              <option value="all">Status</option>
-              {(filters.statuses || []).map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2.5 bg-slate-50/60">
-            <FunnelIcon className="h-5 w-5 text-slate-400" />
-            <select
-              value={yearFilter}
-              onChange={(e) => setYearFilter(e.target.value)}
-              className="bg-transparent text-sm text-slate-800 flex-1 outline-none"
-            >
-              <option value="all">Year</option>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2.5 bg-slate-50/60">
-            <FunnelIcon className="h-5 w-5 text-slate-400" />
-            <select
-              value={semesterFilter}
-              onChange={(e) => setSemesterFilter(e.target.value)}
-              className="bg-transparent text-sm text-slate-800 flex-1 outline-none"
-            >
-              <option value="all">Semester</option>
-              {(filters.semesters || []).map((sem) => (
-                <option key={sem} value={sem}>
-                  {sem}
-                </option>
-              ))}
-            </select>
-          </div>
+
+          <FancySelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            icon={FunnelIcon}
+            options={statusesOptions}
+          />
+          <FancySelect
+            value={yearFilter}
+            onChange={setYearFilter}
+            icon={FunnelIcon}
+            options={yearsOptions}
+          />
         </div>
 
         <div className="grid gap-3">
@@ -163,9 +237,10 @@ export default function LecturerCourseVersions() {
             >
               <div className="space-y-1">
                 <div className="text-sm font-semibold text-slate-900">
-                  {version.course_name || courseId} • {version.course_semester || version.semester || ""}{" "}
-                  {version.course_year || version.year}
+                  {version.course_name || courseId} •{" "}
+                  {getAcademicYear(version) || ""}
                 </div>
+
                 <div className="text-xs text-slate-600 line-clamp-2">
                   {(version.content || "").slice(0, 140) || "Syllabus version"}
                 </div>
@@ -173,6 +248,7 @@ export default function LecturerCourseVersions() {
                   Updated: {version.updated_at?.slice(0, 10) || ""}
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
                 <span
                   className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${
@@ -180,15 +256,17 @@ export default function LecturerCourseVersions() {
                     "bg-slate-100 text-slate-700 border-slate-200"
                   }`}
                 >
-                  {version.status}
+                  {statusLabel[version.status] || version.status}
                 </span>
+
                 <button
                   type="button"
                   className="text-sm font-semibold text-indigo-700 hover:text-indigo-600"
                   onClick={() =>
-                    navigate(`/lecturer/courses/${courseId}/versions/${version.id}`, {
-                      state: { version },
-                    })
+                    navigate(
+                      `/lecturer/courses/${courseId}/versions/${version.id}`,
+                      { state: { version } }
+                    )
                   }
                 >
                   View
@@ -213,4 +291,3 @@ export default function LecturerCourseVersions() {
     </div>
   );
 }
-

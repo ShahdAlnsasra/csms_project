@@ -120,23 +120,30 @@ export function DepartmentAdminNavbar() {
           </button>
         </div>
       </div>
+{/* Navbar tabs */}
+<nav className="border-t border-slate-100 bg-white">
+  <div className="max-w-6xl mx-auto flex gap-6 px-4">
+    <NavLink to="/department-admin/dashboard" end className={navClass}>
+      Dashboard
+    </NavLink>
 
-      {/* Navbar tabs */}
-      <nav className="border-t border-slate-100 bg-white">
-        <div className="max-w-6xl mx-auto flex gap-6 px-4">
-          <NavLink to="/department-admin/dashboard" end className={navClass}>
-            Dashboard
-          </NavLink>
-          <NavLink to="/department-admin/profile" className={navClass}>
-            Profile
-          </NavLink>
-          <NavLink to="/department-admin/requests" className={navClass}>
-           Requests
-        </NavLink>
+    <NavLink to="/department-admin/requests" className={navClass}>
+      Requests
+    </NavLink>
 
-          {/* עוד טאבים בעתיד: Courses, Syllabuses, etc. */}
-        </div>
-      </nav>
+    {/* ✅ חדש */}
+    <NavLink to="/department-admin/courses" className={navClass}>
+      Courses
+    </NavLink>
+
+    {/* ✅ Profile בסוף */}
+    <NavLink to="/department-admin/profile" className={navClass}>
+      Profile
+    </NavLink>
+  </div>
+</nav>
+
+
     </header>
   );
 }

@@ -15,6 +15,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import Department
+from django.contrib.auth import authenticate
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.authtoken.models import Token
 
 # Lecturer / syllabus utilities
 from .models import Syllabus
@@ -140,6 +146,8 @@ def login_view(request):
             {"detail": "Invalid username/email or password."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    token, _ = Token.objects.get_or_create(user=user)
+
 
     return Response(
         {
@@ -151,6 +159,7 @@ def login_view(request):
             "phone": user.phone,
             "id_number": user.id_number,
             "role": user.role,
+            "token": token.key,
             "status": user.status,
             "department": user.department_id,
             "department_name": user.department.name if user.department else None,
@@ -1584,7 +1593,9 @@ def lecturer_courses(request):
                 "code": course.code,
                 "year": course.year,
                 "semester": course.semester,
-                "department": course.department_id,
+                "credits": float(course.credits),
+                "department_name": course.department.name if course.department else None,
+                "department_code": course.department.code if course.department else None,
                 "latest_syllabus": SyllabusSerializer(last_syllabus).data if last_syllabus else None,
             }
         )
@@ -1644,63 +1655,181 @@ def get_course_semesters(request):
     return Response({"semesters": semesters})
 from django.db.models import F
 
-@api_view(["GET"])
-def lecturer_syllabus_filters(request):
-    lecturer_id = request.query_params.get("lecturer_id")
-    course_id = request.query_params.get("course_id")
-    if not lecturer_id or not course_id:
-        return Response({"detail": "lecturer_id and course_id are required."}, status=400)
-
-    qs = Syllabus.objects.filter(uploaded_by_id=lecturer_id, course_id=course_id).select_related("course")
-
-    statuses = list(qs.values_list("status", flat=True).distinct())
-    years = list(qs.values_list("course__year", flat=True).distinct())
-    semesters = list(qs.values_list("course__semester", flat=True).distinct())
-
-    return Response({
-        "statuses": statuses,
-        "years": sorted([y for y in years if y is not None]),
-        "semesters": semesters,
-    })
-
-
-# views.py
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
+from .models import Syllabus
+
+@api_view(["GET"])
+def lecturer_syllabus_filters(request):
+    lecturer_id = request.GET.get("lecturer_id")
+    course_id = request.GET.get("course_id")
+
+    qs = Syllabus.objects.filter(uploaded_by_id=lecturer_id, course_id=course_id)
+
+    years = (
+        qs.exclude(academic_year__isnull=True)
+          .exclude(academic_year__exact="")
+          .values_list("academic_year", flat=True)
+          .distinct()
+    )
+
+    statuses = qs.values_list("status", flat=True).distinct()
+
+    return Response({
+        "years": sorted(list(years)),
+        "statuses": sorted(list(statuses)),
+    })
+
+# backend/api/views.py
 from django.db.models import Max
-from .models import Syllabus, Course, User
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Course, Syllabus, SyllabusWeek, SyllabusAssessment, User
+from .serializers import SyllabusSerializer
+
+from django.db.models import Max
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Course, Syllabus, SyllabusWeek, SyllabusAssessment, User
+from .serializers import SyllabusSerializer
+from datetime import date
+from django.db.models import Max
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Course, Syllabus, SyllabusWeek, SyllabusAssessment, User
+from .serializers import SyllabusSerializer
+
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def create_lecturer_syllabus(request):
     lecturer_id = request.data.get("lecturer_id")
     course_id = request.data.get("course_id")
-    content = request.data.get("content")   # string (JSON)
-    save_as = request.data.get("save_as")   # "DRAFT" / "SUBMIT"
 
-    if not lecturer_id or not course_id or content is None:
-        return Response({"detail": "lecturer_id, course_id, content are required."}, status=400)
+    if not lecturer_id or not course_id:
+        return Response(
+            {"detail": "lecturer_id and course_id are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    try:
-        Course.objects.get(id=course_id)
-        User.objects.get(id=lecturer_id)
-    except:
-        return Response({"detail": "Invalid lecturer/course."}, status=400)
+    lecturer = User.objects.filter(id=lecturer_id, role="LECTURER").first()
+    if not lecturer:
+        return Response({"detail": "Lecturer not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    last_v = Syllabus.objects.filter(course_id=course_id, uploaded_by_id=lecturer_id).aggregate(Max("version"))["version__max"] or 0
-    new_version = last_v + 1
+    course = Course.objects.filter(id=course_id).first()
+    if not course:
+        return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    status_value = "DRAFT" if save_as == "DRAFT" else "PENDING_REVIEW"
+    save_as = request.data.get("saveAs") or request.data.get("save_as") or "SUBMIT"
+    is_draft = (save_as == "DRAFT")
+    new_status = "DRAFT" if is_draft else "PENDING_REVIEW"
 
-    s = Syllabus.objects.create(
-        course_id=course_id,
-        uploaded_by_id=lecturer_id,
-        version=new_version,
-        status=status_value,
-        content=content,
+    # academic_year ברירת מחדל
+    y = date.today().year
+    default_ay = f"{y}-{y+1}"
+    ay = (request.data.get("academic_year") or default_ay).strip()
+
+    # כל הסילבוסים של אותו קורס+מרצה+שנה
+    base_qs = Syllabus.objects.filter(course=course, uploaded_by=lecturer, academic_year=ay)
+
+    # 1) אם יש כבר PENDING_REVIEW לאותה שנה -> חסימה (לא ליצור עוד)
+    if (not is_draft) and base_qs.filter(status="PENDING_REVIEW").exists():
+        return Response(
+            {"detail": "You already have a syllabus pending review for this academic year."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 2) אם יש DRAFT קיים -> מעדכנים אותו במקום ליצור חדש
+    existing_draft = base_qs.filter(status="DRAFT").order_by("-version").first()
+    if existing_draft:
+        serializer = SyllabusSerializer(
+            existing_draft,
+            data=request.data,
+            partial=True,
+            context={"save_as": save_as},
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        obj = serializer.save()
+
+        # אם זה SUBMIT -> מעבירים ל-PENDING_REVIEW
+        if save_as == "SUBMIT":
+            obj.status = "PENDING_REVIEW"
+            obj.reviewer_comment = ""
+            obj.save(update_fields=["status", "reviewer_comment"])
+
+        return Response(SyllabusSerializer(obj).data, status=status.HTTP_200_OK)
+
+    # 3) אם אין DRAFT -> יוצרים גרסה חדשה
+    last_ver = base_qs.aggregate(Max("version")).get("version__max") or 0
+    next_ver = last_ver + 1
+
+    payload = request.data.copy()
+    payload["course"] = course.id
+    payload["academic_year"] = ay  # חשוב!
+
+    ser = SyllabusSerializer(data=payload, partial=is_draft, context={"save_as": save_as})
+    if not ser.is_valid():
+        return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    vd = ser.validated_data
+
+    syllabus = Syllabus.objects.create(
+        course=course,
+        uploaded_by=lecturer,
+        version=next_ver,
+        status=new_status,
+
+        academic_year=ay,
+        level=vd.get("level") or "BSC",
+        course_type=vd.get("course_type") or "MANDATORY",
+        delivery=vd.get("delivery") or "IN_PERSON",
+        instructor_email=vd.get("instructor_email"),
+        language=vd.get("language") or "Hebrew",
+
+        purpose=vd.get("purpose") or "",
+        learning_outputs=vd.get("learning_outputs") or "",
+        course_description=vd.get("course_description") or "",
+        literature=vd.get("literature") or "",
+        teaching_methods_planned=vd.get("teaching_methods_planned") or "",
+        guidelines=vd.get("guidelines") or "",
     )
-    return Response(SyllabusSerializer(s).data, status=status.HTTP_201_CREATED)
 
+    # weeks / assessments רק אם נשלחו
+    weeks = vd.get("weeks") or []
+    if weeks:
+        SyllabusWeek.objects.bulk_create([
+            SyllabusWeek(
+                syllabus=syllabus,
+                week_number=int(w.get("week_number") or w.get("week") or 1),
+                topic=w.get("topic") or "",
+                sources=w.get("sources") or "",
+            )
+            for w in weeks
+        ])
+
+    assessments = vd.get("assessments") or []
+    if assessments:
+        SyllabusAssessment.objects.bulk_create([
+            SyllabusAssessment(
+                syllabus=syllabus,
+                title=a.get("title") or "",
+                percent=int(a.get("percent") or 0),
+            )
+            for a in assessments
+        ])
+
+    return Response(SyllabusSerializer(syllabus).data, status=status.HTTP_201_CREATED)
 
 # ---------- Helper endpoints (statuses / semesters) ----------
 @api_view(["GET"])
@@ -1783,3 +1912,460 @@ def get_history_courses(request):
     courses = Course.objects.filter(id__in=course_ids).order_by("name")
     data = [{"id": c.id, "name": c.name} for c in courses]
     return Response(data)
+
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from .models import Syllabus
+from .serializers import SyllabusSerializer
+from rest_framework import status
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+
+@api_view(["GET", "PUT"])
+def lecturer_syllabus_detail(request, syllabus_id):
+    lecturer_id = request.GET.get("lecturer_id") or request.data.get("lecturer_id")
+
+    syllabus = get_object_or_404(Syllabus, id=syllabus_id, uploaded_by_id=lecturer_id)
+
+    # ✅ GET רגיל
+    if request.method == "GET":
+        return Response(SyllabusSerializer(syllabus).data)
+
+    # ✅ PUT: נועלים עריכה לכל מצב שהוא לא DRAFT
+    if syllabus.status != "DRAFT":
+        return Response(
+            {"detail": "Only DRAFT syllabus can be edited. Use clone for Approved/Rejected."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ✅ להבין אם זה שמירה כטיוטה או Submit
+    save_as = request.data.get("save_as") or request.data.get("saveAs") or "SUBMIT"
+
+    serializer = SyllabusSerializer(
+        syllabus,
+        data=request.data,
+        partial=True,
+        context={"save_as": save_as},
+    )
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+from django.db.models import Max
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+
+from .models import Syllabus, SyllabusWeek, SyllabusAssessment
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def clone_lecturer_syllabus(request, syllabus_id):
+    """
+    POST /api/lecturer/syllabuses/<id>/clone/
+    - יוצר/מעדכן DRAFT חדש שמועתק מהגרסה (APPROVED/REJECTED)
+    - אם כבר יש DRAFT לאותו course+lecturer+academic_year -> נעדכן אותו במקום ליצור עוד אחד
+    """
+    user = request.user
+
+    source = get_object_or_404(Syllabus, id=syllabus_id, uploaded_by=user)
+
+    # לא מאפשרים לשכפל pending (כי זה כבר בתהליך בדיקה)
+    if source.status == "PENDING_REVIEW":
+        return Response(
+            {"detail": "Cannot edit while pending review. Wait for reviewer decision."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    ay = source.academic_year
+    if not ay:
+        # אם משום מה אין academic_year, ניצור אחד בסיסי
+        from datetime import date
+        y = date.today().year
+        ay = f"{y}-{y+1}"
+
+    # אם כבר קיימת טיוטה לאותו קורס/שנה — נשתמש בה (Upsert)
+    draft = Syllabus.objects.filter(
+        course=source.course,
+        uploaded_by=user,
+        academic_year=ay,
+        status="DRAFT",
+    ).first()
+
+    created_new = False
+
+    if not draft:
+        last_ver = (
+            Syllabus.objects.filter(course=source.course, uploaded_by=user)
+            .aggregate(Max("version"))
+            .get("version__max") or 0
+        )
+        draft = Syllabus.objects.create(
+            course=source.course,
+            uploaded_by=user,
+            academic_year=ay,
+            version=last_ver + 1,
+            status="DRAFT",
+        )
+        created_new = True
+
+    # להעתיק שדות
+    fields_to_copy = [
+        "level",
+        "course_type",
+        "delivery",
+        "instructor_email",
+        "language",
+        "purpose",
+        "learning_outputs",
+        "course_description",
+        "literature",
+        "teaching_methods_planned",
+        "guidelines",
+    ]
+    for f in fields_to_copy:
+        setattr(draft, f, getattr(source, f))
+
+    # הערות בודק: בדראפט החדש מתחילים נקי (את ההערות נציג ב־UI מה־source)
+    draft.reviewer_comment = None
+    draft.save()
+
+    # להעתיק weeks/assessments
+    draft.weeks.all().delete()
+    draft.assessments.all().delete()
+
+    source_weeks = list(source.weeks.all().order_by("week_number"))
+    if source_weeks:
+        SyllabusWeek.objects.bulk_create([
+            SyllabusWeek(
+                syllabus=draft,
+                week_number=w.week_number,
+                topic=w.topic,
+                sources=w.sources,
+            )
+            for w in source_weeks
+        ])
+
+    source_assessments = list(source.assessments.all())
+    if source_assessments:
+        SyllabusAssessment.objects.bulk_create([
+            SyllabusAssessment(
+                syllabus=draft,
+                title=a.title,
+                percent=a.percent,
+            )
+            for a in source_assessments
+        ])
+
+    return Response(
+        {
+            "draft": SyllabusSerializer(draft).data,
+            "created_new": created_new,
+            "source_id": source.id,
+            "source_status": source.status,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+import json
+import os
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from openai import OpenAI
+
+
+def get_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is missing. Check backend/.env and load_dotenv in settings.py"
+        )
+    return OpenAI(api_key=api_key)
+
+
+
+# views.py
+from typing import List
+from pydantic import BaseModel
+from openai import OpenAI
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+class Week(BaseModel):
+    week: str
+    topic: str
+    sources: str = ""
+
+class Assessment(BaseModel):
+    title: str
+    percent: str
+
+class SyllabusDraft(BaseModel):
+    purpose: str
+    learningOutputs: str
+    courseDescription: str
+    literature: str
+    teachingMethodsPlanned: str
+    guidelines: str
+    weeksPlan: List[Week]
+    assessments: List[Assessment]
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def ai_syllabus_draft(request):
+    client = OpenAI()  # קורא OPENAI_API_KEY מה־env
+
+    course_name = (request.data.get("courseName") or "").strip()
+    language = (request.data.get("language") or "English").strip()
+    mode = (request.data.get("mode") or "fill").strip().lower()
+    reviewer_comment = request.data.get("reviewerComment") or ""
+    current = request.data.get("currentDraft") or {}
+    user_instruction = request.data.get("userInstruction") or ""
+
+    if not course_name:
+        return Response({"detail": "courseName is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    system = "You are a syllabus assistant. Return a JSON object matching the given schema ONLY."
+
+    if mode == "fix":
+        user = f"""
+Course: {course_name}
+Language: {language}
+
+We are in FIX mode (rejected). Improve the draft to address reviewer comments.
+Reviewer comments:
+{reviewer_comment}
+
+Current draft (edit it, don't ignore it):
+{current}
+
+Extra instruction (optional):
+{user_instruction}
+"""
+    else:
+        user = f"""
+Course: {course_name}
+Language: {language}
+
+We are in FILL mode. Create a complete syllabus draft.
+
+Extra instruction (optional):
+{user_instruction}
+"""
+
+    resp = client.responses.parse(
+        model="gpt-4o-2024-08-06",  # לבחור מודל שתומך Structured Outputs
+        input=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        text_format=SyllabusDraft,
+    )
+
+    data = resp.output_parsed.model_dump()
+    return Response(data)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+import os
+from openai import OpenAI
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def syllabus_chat(request):
+    message = (request.data.get("message") or "").strip()
+    course_name = (request.data.get("courseName") or "").strip()
+    language = (request.data.get("language") or "Hebrew").strip()
+
+    if not message:
+        return Response({"detail": "message is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not os.getenv("OPENAI_API_KEY"):
+        return Response(
+            {"detail": "OPENAI_API_KEY is missing in backend env"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    client = OpenAI()
+
+    system = (
+        "You are a helpful syllabus assistant for lecturers. "
+        f"Answer in {language}. Be concise and practical."
+    )
+
+    user = f"""
+Course: {course_name or "N/A"}
+User message: {message}
+"""
+
+    try:
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return Response({"reply": resp.output_text or ""}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# api/views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+
+from openai import OpenAI
+from .models import Syllabus, SyllabusChatMessage
+from .serializers import SyllabusChatMessageSerializer
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def syllabus_chat_history(request, syllabus_id):
+    syllabus = get_object_or_404(Syllabus, id=syllabus_id, uploaded_by=request.user)
+    msgs = syllabus.chat_messages.all()
+    ser = SyllabusChatMessageSerializer(msgs, many=True)
+    return Response(ser.data)
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from openai import OpenAI
+
+from .models import Syllabus, SyllabusChatMessage
+from .serializers import SyllabusChatMessageSerializer
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def syllabus_chat_ask(request, syllabus_id):
+    syllabus = get_object_or_404(Syllabus, id=syllabus_id, uploaded_by=request.user)
+
+    # ⛔ אם Pending – לא מאפשרים בכלל לשאול "לתקן" (אופציונלי, אבל מומלץ)
+    # אם את רוצה שיאפשר שאלות כלליות גם כשהוא pending, תורידי את זה.
+    if syllabus.status == "PENDING_REVIEW":
+        return Response(
+            {"detail": "Syllabus is pending review and cannot be edited now."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    message = (request.data.get("message") or "").strip()
+    language = (request.data.get("language") or syllabus.language or "Hebrew").strip()
+    course_name = (request.data.get("courseName") or syllabus.course.name if syllabus.course else "N/A").strip()
+
+    if not message:
+        return Response({"detail": "message is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # ✅ FIX אוטומטי לפי סטטוס (לא סומכים על הפרונט)
+    auto_mode = "fix" if syllabus.status == "REJECTED" else "chat"
+
+    # הערת בודק + דראפט נוכחי
+    reviewer_comment = syllabus.reviewer_comment or ""
+    current = request.data.get("currentDraft") or {}
+
+    # 1) שמירת הודעת המשתמש
+    SyllabusChatMessage.objects.create(syllabus=syllabus, role="user", content=message)
+
+    # 2) history אחרון
+    last_msgs = list(syllabus.chat_messages.all().order_by("-created_at")[:12])
+    last_msgs.reverse()
+
+    system = build_syllabus_system_prompt(language)
+
+    chat_input = [{"role": "system", "content": system}]
+
+    # אם rejected → מוסיפים הקשר FIX (הערות + דראפט)
+    if auto_mode == "fix":
+        chat_input.append({"role": "user", "content": build_fix_context(reviewer_comment, current)})
+
+    # מוסיפים history
+    for m in last_msgs:
+        chat_input.append({"role": m.role, "content": m.content})
+
+    # מוסיפים הודעה אחרונה (כדי להיות בטוחים שהיא בפנים)
+    # (אם כבר נכנסה דרך history, זה לא נורא, אבל זה מוודא)
+    chat_input.append({"role": "user", "content": f"Course: {course_name}\nUser message: {message}"})
+
+    client = OpenAI()
+    resp = client.responses.create(
+        model="gpt-4.1-mini",
+        input=chat_input
+    )
+    reply = resp.output_text or ""
+
+    # 7) שמירת תשובת ה-AI
+    SyllabusChatMessage.objects.create(syllabus=syllabus, role="assistant", content=reply)
+    return Response({"reply": reply, "mode": auto_mode}, status=status.HTTP_200_OK)
+
+import json
+
+def build_syllabus_system_prompt(language: str) -> str:
+    lang = language or "Hebrew"
+    return f"""
+You are CSMS syllabus assistant for lecturers.
+Answer in {lang}. Be concise and practical.
+
+You must follow CSMS rules:
+- DRAFT: lecturer can save partial content.
+- PENDING_REVIEW: waiting for reviewer, not editable.
+- REJECTED: reviewer left comments; lecturer must fix and resubmit.
+- APPROVED: lecturer may revise by creating a new DRAFT and resubmit.
+
+You must help field-by-field using EXACT API fields:
+Meta:
+- academic_year (format YYYY-YYYY)
+- level (BSC/MSC)
+- course_type (MANDATORY/ELECTIVE/GENERAL)
+- delivery (IN_PERSON/ZOOM)
+- instructor_email
+- language
+
+Content:
+- purpose
+- learning_outputs
+- course_description
+- literature
+- teaching_methods_planned
+- guidelines
+
+Nested arrays:
+- weeks: list of {{week_number, topic, sources}}
+- assessments: list of {{title, percent}} and total percent must equal 100 on SUBMIT.
+
+If status is REJECTED, you MUST address reviewer_comment and propose concrete fixes.
+"""
+
+def build_fix_context(reviewer_comment: str, current_draft) -> str:
+    rc = reviewer_comment or ""
+    try:
+        cd = json.dumps(current_draft or {}, ensure_ascii=False)
+    except Exception:
+        cd = str(current_draft or {})
+    return f"Reviewer comments:\n{rc}\n\nCurrent draft JSON:\n{cd}\n"

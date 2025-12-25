@@ -68,30 +68,111 @@ class Course(models.Model):
         return f"{self.code} - {self.name}"
 
 
+# backend/api/models.py
+from django.db import models
+from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import RegexValidator
+from django.db.models import Q
 class Syllabus(models.Model):
-    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="syllabuses")
+    course = models.ForeignKey("Course", on_delete=models.CASCADE, related_name="syllabuses")
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
     version = models.IntegerField(default=1)
-    content = models.TextField()
 
     status_choices = [
         ("DRAFT", "Draft"),
         ("PENDING_REVIEW", "Pending Reviewer Approval"),
-        ("PENDING_DEPT", "Pending Department Approval"),
         ("APPROVED", "Approved"),
         ("REJECTED", "Rejected"),
     ]
-
-    status = models.CharField(max_length=30, choices=status_choices, default="PENDING_REVIEW")
-
+    status = models.CharField(max_length=30, choices=status_choices, default="DRAFT")
     reviewer_comment = models.TextField(null=True, blank=True)
+
+    # ✅ סילבוס — עמודות נפרדות
+    academic_year = models.CharField(
+         max_length=9,
+         validators=[RegexValidator(r"^\d{4}-\d{4}$", "academic_year must be like 2025-2026")],
+         null=True,          
+         blank=True
+         )  
+
+    LEVEL_CHOICES = [("BSC", "BSc"), ("MSC", "MSc")]
+    level = models.CharField(max_length=10, choices=LEVEL_CHOICES, null=True, blank=True)
+
+    COURSE_TYPE_CHOICES = [
+        ("MANDATORY", "Mandatory"),
+        ("ELECTIVE", "Elective"),
+        ("GENERAL", "General"),
+    ]
+    course_type = models.CharField(max_length=20, choices=COURSE_TYPE_CHOICES, null=True, blank=True)
+
+    DELIVERY_CHOICES = [
+        ("IN_PERSON", "In-person"),
+        ("ZOOM", "Zoom"),
+    ]
+    delivery = models.CharField(max_length=20, choices=DELIVERY_CHOICES, null=True, blank=True)
+
+    instructor_email = models.EmailField(blank=True, null=True)
+    language = models.CharField(max_length=50, default="Hebrew", null=True, blank=True)
+
+    purpose = models.TextField(null=True, blank=True)
+    learning_outputs = models.TextField(null=True, blank=True)
+    course_description = models.TextField(null=True, blank=True)
+    literature = models.TextField(null=True, blank=True)
+    teaching_methods_planned = models.TextField(null=True, blank=True)
+    guidelines = models.TextField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+       constraints = [
+            # ✅ תמיד: כל version חייב להיות ייחודי לאותו קורס+מרצה+שנה
+            models.UniqueConstraint(
+                fields=["course", "uploaded_by", "academic_year", "version"],
+                name="uniq_syllabus_course_lecturer_year_version",
+        ),
+
+        # ✅ רק טיוטה אחת בכל פעם
+        models.UniqueConstraint(
+            fields=["course", "uploaded_by", "academic_year"],
+            condition=Q(status="DRAFT"),
+            name="uniq_draft_per_course_lecturer_year",
+        ),
+
+        # ✅ רק pending אחד בכל פעם
+        models.UniqueConstraint(
+            fields=["course", "uploaded_by", "academic_year"],
+            condition=Q(status="PENDING_REVIEW"),
+            name="uniq_pending_per_course_lecturer_year",
+        ),
+    ]
+
+
+class SyllabusWeek(models.Model):
+    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="weeks")
+    week_number = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    topic = models.TextField()
+    sources = models.TextField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["course", "uploaded_by", "academic_year", "version"],
+                name="uniq_syllabus_course_lecturer_year_version",
+            )
+        ]
+    def __str__(self):
+        return f"Week {self.week_number} ({self.syllabus})"
+
+
+class SyllabusAssessment(models.Model):
+    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="assessments")
+    title = models.CharField(max_length=200)
+    percent = models.PositiveIntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     def __str__(self):
-        return f"Syllabus v{self.version} for {self.course.code}"
+        return f"{self.title} - {self.percent}% ({self.syllabus})"
 
 # -------------------------------
 #   User Manager
@@ -309,7 +390,135 @@ class MagicLink(models.Model):
 status_choices = [
     ("DRAFT", "Draft"),
     ("PENDING_REVIEW", "Pending Reviewer Approval"),
-    ("PENDING_DEPT", "Pending Department Approval"),
     ("APPROVED", "Approved"),
     ("REJECTED", "Rejected"),
 ]
+
+
+
+
+from django.db import models
+from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
+from django.db.models import Q
+
+class SyllabusDocument(models.Model):
+    """
+    מסמך “אב” של סילבוס: מרצה+קורס+שנה אקדמית
+    """
+    course = models.ForeignKey("Course", on_delete=models.CASCADE, related_name="syllabus_documents")
+    lecturer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="syllabus_documents")
+
+    academic_year = models.CharField(
+        max_length=9,
+        validators=[RegexValidator(r"^\d{4}-\d{4}$", "academic_year must be like 2025-2026")],
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["course", "lecturer", "academic_year"],
+                name="uniq_document_course_lecturer_year",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Doc {self.academic_year} {self.course.code} ({self.lecturer.email})"
+
+
+class SyllabusVersion(models.Model):
+    """
+    גרסה ספציפית של סילבוס בתוך מסמך אב
+    """
+    document = models.ForeignKey(SyllabusDocument, on_delete=models.CASCADE, related_name="versions")
+
+    version = models.IntegerField(default=1)
+
+    status_choices = [
+        ("DRAFT", "Draft"),
+        ("PENDING_REVIEW", "Pending Reviewer Approval"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    ]
+    status = models.CharField(max_length=30, choices=status_choices, default="DRAFT")
+    reviewer_comment = models.TextField(null=True, blank=True)
+
+    LEVEL_CHOICES = [("BSC", "BSc"), ("MSC", "MSc")]
+    level = models.CharField(max_length=10, choices=LEVEL_CHOICES, null=True, blank=True)
+
+    COURSE_TYPE_CHOICES = [
+        ("MANDATORY", "Mandatory"),
+        ("ELECTIVE", "Elective"),
+        ("GENERAL", "General"),
+    ]
+    course_type = models.CharField(max_length=20, choices=COURSE_TYPE_CHOICES, null=True, blank=True)
+
+    DELIVERY_CHOICES = [("IN_PERSON", "In-person"), ("ZOOM", "Zoom")]
+    delivery = models.CharField(max_length=20, choices=DELIVERY_CHOICES, null=True, blank=True)
+
+    instructor_email = models.EmailField(blank=True, null=True)
+    language = models.CharField(max_length=50, default="Hebrew", null=True, blank=True)
+
+    purpose = models.TextField(null=True, blank=True)
+    learning_outputs = models.TextField(null=True, blank=True)
+    course_description = models.TextField(null=True, blank=True)
+    literature = models.TextField(null=True, blank=True)
+    teaching_methods_planned = models.TextField(null=True, blank=True)
+    guidelines = models.TextField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["document", "version"], name="uniq_doc_version"),
+            models.UniqueConstraint(
+                fields=["document"],
+                condition=Q(status="DRAFT"),
+                name="uniq_draft_per_document",
+            ),
+            models.UniqueConstraint(
+                fields=["document"],
+                condition=Q(status="PENDING_REVIEW"),
+                name="uniq_pending_per_document",
+            ),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Version {self.version} ({self.document})"
+
+
+class SyllabusWeek(models.Model):
+    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="weeks")
+    week_number = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    topic = models.TextField()
+    sources = models.TextField(blank=True, null=True)
+    class Meta:
+        constraints = [ models.UniqueConstraint(fields=["syllabus", "week_number"], name="uniq_week_per_syllabus")]
+
+    def __str__(self):
+        return f"Week {self.week_number} ({self.syllabus})"
+
+
+class SyllabusAssessment(models.Model):
+    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="assessments")
+    title = models.CharField(max_length=200)
+    percent = models.PositiveIntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)])
+
+class SyllabusChatMessage(models.Model):
+    syllabus = models.ForeignKey(
+        Syllabus,
+        on_delete=models.CASCADE,
+        related_name="chat_messages"
+    )
+    role = models.CharField(max_length=20)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]

@@ -200,6 +200,27 @@ class CourseSerializer(serializers.ModelSerializer):
         return result
 
 
+
+from rest_framework import serializers
+from .models import Syllabus, SyllabusWeek, SyllabusAssessment
+
+from rest_framework import serializers
+from .models import Syllabus, SyllabusWeek, SyllabusAssessment
+from rest_framework import serializers
+
+
+class SyllabusWeekSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SyllabusWeek
+        fields = ["week_number", "topic", "sources"]
+
+
+class SyllabusAssessmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SyllabusAssessment
+        fields = ["title", "percent"]
+
+
 class SyllabusSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(source="course.name", read_only=True)
     course_code = serializers.CharField(source="course.code", read_only=True)
@@ -207,23 +228,168 @@ class SyllabusSerializer(serializers.ModelSerializer):
     course_semester = serializers.CharField(source="course.semester", read_only=True)
     department_id = serializers.IntegerField(source="course.department_id", read_only=True)
 
+    # ✅ חשוב: required=False כדי לא לחייב תמיד nested בשמירה כטיוטה
+    weeks = SyllabusWeekSerializer(many=True, required=False)
+    assessments = SyllabusAssessmentSerializer(many=True, required=False)
+
     class Meta:
         model = Syllabus
         fields = [
             "id",
             "course",
-            "course_id",
             "course_name",
             "course_code",
             "course_year",
             "course_semester",
             "department_id",
+            "uploaded_by",
             "version",
             "status",
             "reviewer_comment",
             "created_at",
             "updated_at",
-            "uploaded_by",
-            "content",
+
+            "academic_year",
+            "level",
+            "course_type",
+            "delivery",
+            "instructor_email",
+            "language",
+            "purpose",
+            "learning_outputs",
+            "course_description",
+            "literature",
+            "teaching_methods_planned",
+            "guidelines",
+
+            "weeks",
+            "assessments",
         ]
-        read_only_fields = ["created_at", "updated_at", "uploaded_by"]
+
+        read_only_fields = ["uploaded_by", "version", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        save_as = (
+        self.context.get("save_as")
+        or self.initial_data.get("save_as")
+        or self.initial_data.get("saveAs")
+        or "SUBMIT"
+        )
+        is_draft = (save_as == "DRAFT")
+               # ✅ בדראפט לא דורשים "100%"
+        if is_draft:
+            return attrs
+        assessments = attrs.get("assessments", None)
+
+        # אם לא שלחו assessments בכלל (למשל draft חלקי) -> לא בודקים 100%
+        if assessments is None:
+            return attrs
+
+        total = 0
+        for a in assessments:
+            try:
+                total += int(a.get("percent", 0) or 0)
+            except Exception:
+                total += 0
+
+        if assessments and total != 100:
+            raise serializers.ValidationError(
+                {"assessments": "Assessment percentages must total exactly 100%."}
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        weeks_data = validated_data.pop("weeks", [])
+        assessments_data = validated_data.pop("assessments", [])
+
+        syllabus = Syllabus.objects.create(**validated_data)
+
+        if weeks_data:
+            SyllabusWeek.objects.bulk_create([
+                SyllabusWeek(
+                    syllabus=syllabus,
+                    week_number=w.get("week_number"),
+                    topic=w.get("topic", ""),
+                    sources=w.get("sources", ""),
+                )
+                for w in weeks_data
+            ])
+
+        if assessments_data:
+            SyllabusAssessment.objects.bulk_create([
+                SyllabusAssessment(
+                    syllabus=syllabus,
+                    title=a.get("title", ""),
+                    percent=int(a.get("percent", 0) or 0),
+                )
+                for a in assessments_data
+            ])
+
+        return syllabus
+
+    def update(self, instance, validated_data):
+        # ✅ זה התיקון העיקרי ל־500
+        weeks_data = validated_data.pop("weeks", None)
+        assessments_data = validated_data.pop("assessments", None)
+
+        # update שדות רגילים
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # אם שלחו weeks — נחליף את כולם
+        if weeks_data is not None:
+            instance.weeks.all().delete()
+            if weeks_data:
+                SyllabusWeek.objects.bulk_create([
+                    SyllabusWeek(
+                        syllabus=instance,
+                        week_number=w.get("week_number"),
+                        topic=w.get("topic", ""),
+                        sources=w.get("sources", ""),
+                    )
+                    for w in weeks_data
+                ])
+
+        # אם שלחו assessments — נחליף את כולם
+        if assessments_data is not None:
+            instance.assessments.all().delete()
+            if assessments_data:
+                SyllabusAssessment.objects.bulk_create([
+                    SyllabusAssessment(
+                        syllabus=instance,
+                        title=a.get("title", ""),
+                        percent=int(a.get("percent", 0) or 0),
+                    )
+                    for a in assessments_data
+                ])
+            # ✅ פה מוסיפים מעבר סטטוס לפי save_as
+        save_as = (
+             self.context.get("save_as")
+             or self.initial_data.get("save_as")
+             or self.initial_data.get("saveAs")
+             or "SUBMIT"
+              )
+
+        if save_as == "SUBMIT":
+            instance.status = "PENDING_REVIEW"
+            instance.reviewer_comment = ""  # לנקות הערות קודמות
+            instance.save(update_fields=["status", "reviewer_comment"])
+            
+        elif save_as == "DRAFT":
+            instance.status = "DRAFT"
+            instance.save(update_fields=["status"])
+        return instance
+
+
+
+# api/serializers.py
+from rest_framework import serializers
+from .models import SyllabusChatMessage
+
+class SyllabusChatMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SyllabusChatMessage
+        fields = ["id", "syllabus", "role", "content", "created_at"]
+        read_only_fields = ["id", "created_at"]

@@ -23,13 +23,11 @@ from .views import (
     department_course_graph,
     lecturer_courses,
     lecturer_syllabuses,
-    syllabus_statuses,
-    course_semesters,
-    lecturer_syllabus_filters,
-    create_lecturer_syllabus,
     
 )
-
+from django.urls import path
+from .views import ai_syllabus_draft
+from .views import syllabus_chat
 urlpatterns = [
     path("", include(router.urls)),
     path("signup/", views.signup_request_create, name="signup"),
@@ -40,10 +38,6 @@ urlpatterns = [
     path("departments/<int:dept_id>/years/", views.get_years_for_department, name="dept-years"),
     path("semesters/", views.get_semesters, name="semesters"),
     path("activate/<uuid:token>/", views.activate_with_magic_link, name="activate"),
-    path("syllabus-statuses/", syllabus_statuses, name="syllabus-statuses"),
-    path("course-semesters/", course_semesters, name="course-semesters"),
-    path("lecturer/syllabuses/filters/", lecturer_syllabus_filters, name="lecturer-syllabuses-filters"),
-    path("lecturer/syllabuses/create/", create_lecturer_syllabus, name="create-lecturer-syllabus"),
     # Lecturer
     path("lecturer/courses/", lecturer_courses, name="lecturer-courses"),
     path("lecturer/syllabuses/", lecturer_syllabuses, name="lecturer-syllabuses"),
@@ -86,20 +80,28 @@ urlpatterns = [
         DepartmentAdminCourseDetail.as_view(),
         name="department-admin-course-detail",
     ),
-    path(
-        "department-admin/course-graph/",
-        department_course_graph,
-        name="department-course-graph",
-    ),
+    path("department-admin/course-graph/", department_course_graph, name="department-course-graph"),
      path(
         "department-admin/courses/<int:pk>/ai-insights/",
         views.CourseAIInsightsView.as_view(),
         name="course-ai-insights",
     ),
-    path("syllabus-statuses/", views.syllabus_statuses, name="syllabus-statuses"),
-    path("course-semesters/", views.course_semesters, name="course-semesters"),
+    path("syllabus-statuses/", views.get_syllabus_statuses, name="syllabus-statuses"),
+    path("course-semesters/", views.get_course_semesters),
     path("lecturer/syllabuses/filters/", views.lecturer_syllabus_filters),
     path("lecturer/syllabuses/create/", views.create_lecturer_syllabus),
+
+    path("history/years/", views.get_history_years),
+    path("history/courses/", views.get_history_courses),
+    path("lecturer/syllabuses/<int:syllabus_id>/", views.lecturer_syllabus_detail),
+    path("lecturer/syllabuses/<int:syllabus_id>/clone/", views.clone_lecturer_syllabus),
+    path("ai/syllabus-draft/", ai_syllabus_draft),
+    path("ai/syllabus-chat/", syllabus_chat),
+    path("lecturer/syllabuses/<int:syllabus_id>/chat/", views.syllabus_chat_history),
+    path("lecturer/syllabuses/<int:syllabus_id>/chat/ask/", views.syllabus_chat_ask),
+
+
+
 
 
     
