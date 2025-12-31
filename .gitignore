@@ -1,18 +1,17 @@
-# env
-.env
-*.env
+# Ignore Node packages
+frontend/node_modules/
 
-# python
-.venv/
+# Ignore Python virtual env
 venv/
+
+# Ignore cache and temp files
 __pycache__/
 *.pyc
-
-# node
-node_modules/
-dist/
-build/
+.env
 
 
+# Ignore local DB (do not commit)
 backend/db.sqlite3
-*.sqlite3
+backend/*.sqlite3
+
+
