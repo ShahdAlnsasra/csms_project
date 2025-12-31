@@ -2098,7 +2098,7 @@ def get_openai_client():
 
 
 # views.py
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from openai import OpenAI
 from rest_framework.decorators import api_view, permission_classes
@@ -2179,6 +2179,100 @@ Extra instruction (optional):
 
     data = resp.output_parsed.model_dump()
     return Response(data)
+
+
+class SyllabusReviseResponse(BaseModel):
+    """Response model for syllabus revision with changes summary and open questions"""
+    purpose: Optional[str] = None
+    learningOutputs: Optional[str] = None
+    courseDescription: Optional[str] = None
+    literature: Optional[str] = None
+    teachingMethodsPlanned: Optional[str] = None
+    guidelines: Optional[str] = None
+    weeksPlan: Optional[List[Week]] = None
+    assessments: Optional[List[Assessment]] = None
+    changesSummary: List[str]  # Bullet points of what changed and why
+    openQuestions: List[str]  # Missing info the AI cannot safely invent
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def ai_syllabus_revise(request):
+    """
+    POST /api/ai/syllabus/revise/
+    Updates a rejected syllabus based on reviewer comments.
+    Returns updated fields, changes summary, and open questions.
+    """
+    import os
+    import json
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        return Response(
+            {"detail": "OPENAI_API_KEY is missing in backend env"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    client = OpenAI()
+    
+    course_name = (request.data.get("courseName") or "").strip()
+    language = (request.data.get("language") or "Hebrew").strip()
+    reviewer_comment = (request.data.get("reviewerComment") or "").strip()
+    current_draft = request.data.get("currentDraft") or {}
+    user_instruction = (request.data.get("userInstruction") or "").strip()
+    
+    if not course_name:
+        return Response({"detail": "courseName is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not reviewer_comment:
+        return Response({"detail": "reviewerComment is required for revision"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Build the prompt for revision
+    system = """You are a syllabus revision assistant. When revising a syllabus based on reviewer comments:
+1. Only update fields that need changes based on the reviewer feedback
+2. Keep all other fields unchanged (return None/null for unchanged fields)
+3. Provide a clear "Changes Summary" with bullet points describing what was changed and why
+4. List any "Open Questions" - information that is missing and you cannot safely invent
+
+Return a JSON object with:
+- Updated fields (only those that changed, None for unchanged)
+- changesSummary: array of strings (bullet points)
+- openQuestions: array of strings (missing info)"""
+    
+    current_draft_str = json.dumps(current_draft, indent=2, ensure_ascii=False) if current_draft else "{}"
+    
+    user_prompt = f"""Course: {course_name}
+Language: {language}
+
+Reviewer Comments (address these issues):
+{reviewer_comment}
+
+Current Syllabus Draft:
+{current_draft_str}
+
+Additional Instructions (optional):
+{user_instruction}
+
+Please revise the syllabus to address the reviewer's comments. Only update fields that need changes. Keep everything else as-is."""
+    
+    try:
+        resp = client.responses.parse(
+            model="gpt-4o-2024-08-06",
+            input=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_prompt},
+            ],
+            text_format=SyllabusReviseResponse,
+        )
+        
+        data = resp.output_parsed.model_dump()
+        return Response(data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response(
+            {"detail": f"AI revision failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -2369,3 +2463,557 @@ def build_fix_context(reviewer_comment: str, current_draft) -> str:
     except Exception:
         cd = str(current_draft or {})
     return f"Reviewer comments:\n{rc}\n\nCurrent draft JSON:\n{cd}\n"
+
+
+# ===== REVIEWER API ENDPOINTS =====
+from django.db.models import Q, Exists, OuterRef
+from django.core.mail import send_mail
+from django.conf import settings
+
+@api_view(["GET"])
+def reviewer_new_syllabuses(request):
+    """
+    GET /api/reviewer/syllabuses/new/?reviewer_id=...&department_id=...
+    Returns new syllabuses (PENDING_REVIEW) from lecturers in reviewer's department.
+    """
+    reviewer_id = request.query_params.get("reviewer_id")
+    department_id = request.query_params.get("department_id")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+    except User.DoesNotExist:
+        return Response({"detail": "Reviewer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Get reviewer's department
+    reviewer_dept = reviewer.department
+    if not reviewer_dept:
+        return Response({"detail": "Reviewer has no department assigned."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Filter by department if provided
+    dept_filter = Q(course__department=reviewer_dept)
+    if department_id:
+        try:
+            dept_filter = Q(course__department_id=int(department_id))
+        except ValueError:
+            return Response({"detail": "Invalid department_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Get NEW syllabuses: PENDING_REVIEW that have NEVER been approved or rejected before
+    # A "new" syllabus is one that has no previous APPROVED or REJECTED version
+    from django.db.models import Exists, OuterRef
+    
+    # Get all PENDING_REVIEW syllabuses in the department
+    all_pending = Syllabus.objects.filter(
+        dept_filter,
+        status="PENDING_REVIEW"
+    ).select_related("course", "uploaded_by", "course__department")
+    
+    # Filter to only include syllabuses that DON'T have a previous APPROVED or REJECTED version
+    new_syllabuses = []
+    for syllabus in all_pending:
+        # Check if there's a previous APPROVED or REJECTED version for same course+lecturer+academic_year
+        has_previous = Syllabus.objects.filter(
+            course=syllabus.course,
+            uploaded_by=syllabus.uploaded_by,
+            academic_year=syllabus.academic_year,
+            status__in=["APPROVED", "REJECTED"]
+        ).exclude(id=syllabus.id).exists()
+        
+        # Only include if it's truly new (no previous approved/rejected version)
+        if not has_previous:
+            new_syllabuses.append(syllabus)
+    
+    # Order by updated_at descending
+    new_syllabuses.sort(key=lambda x: x.updated_at, reverse=True)
+    
+    serializer = SyllabusSerializer(new_syllabuses, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def reviewer_edited_syllabuses(request):
+    """
+    GET /api/reviewer/syllabuses/edited/?reviewer_id=...&department_id=...
+    Returns syllabuses that have been updated (have a previous APPROVED or REJECTED version).
+    """
+    reviewer_id = request.query_params.get("reviewer_id")
+    department_id = request.query_params.get("department_id")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+    except User.DoesNotExist:
+        return Response({"detail": "Reviewer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    reviewer_dept = reviewer.department
+    if not reviewer_dept:
+        return Response({"detail": "Reviewer has no department assigned."}, status=status.HTTP_400_BAD_REQUEST)
+
+    dept_filter = Q(course__department=reviewer_dept)
+    if department_id:
+        try:
+            dept_filter = Q(course__department_id=int(department_id))
+        except ValueError:
+            return Response({"detail": "Invalid department_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Find EDITED syllabuses: those that have a previous APPROVED or REJECTED version
+    # Get all PENDING_REVIEW syllabuses in the department (edited ones are resubmissions)
+    all_pending = Syllabus.objects.filter(
+        dept_filter,
+        status="PENDING_REVIEW"
+    ).select_related("course", "uploaded_by", "course__department")
+
+    # Filter to only include syllabuses that HAVE a previous APPROVED or REJECTED version
+    edited_syllabuses = []
+    for syllabus in all_pending:
+        # Check if there's a previous APPROVED or REJECTED version for same course+lecturer+academic_year
+        has_previous = Syllabus.objects.filter(
+            course=syllabus.course,
+            uploaded_by=syllabus.uploaded_by,
+            academic_year=syllabus.academic_year,
+            status__in=["APPROVED", "REJECTED"]
+        ).exclude(id=syllabus.id).exists()
+        
+        # Only include if it has a previous version (it's an edited/resubmitted syllabus)
+        if has_previous:
+            edited_syllabuses.append(syllabus)
+
+    # Order by updated_at descending
+    edited_syllabuses.sort(key=lambda x: x.updated_at, reverse=True)
+    
+    serializer = SyllabusSerializer(edited_syllabuses, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def reviewer_history_syllabuses(request):
+    """
+    GET /api/reviewer/syllabuses/history/?reviewer_id=...&department_id=...
+    Returns all APPROVED and REJECTED syllabuses (history) from reviewer's department.
+    """
+    reviewer_id = request.query_params.get("reviewer_id")
+    department_id = request.query_params.get("department_id")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+    except User.DoesNotExist:
+        return Response({"detail": "Reviewer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    reviewer_dept = reviewer.department
+    if not reviewer_dept:
+        return Response({"detail": "Reviewer has no department assigned."}, status=status.HTTP_400_BAD_REQUEST)
+
+    dept_filter = Q(course__department=reviewer_dept)
+    if department_id:
+        try:
+            dept_filter = Q(course__department_id=int(department_id))
+        except ValueError:
+            return Response({"detail": "Invalid department_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Get all APPROVED and REJECTED syllabuses in the department
+    history_syllabuses = Syllabus.objects.filter(
+        dept_filter,
+        status__in=["APPROVED", "REJECTED"]
+    ).select_related("course", "uploaded_by", "course__department").order_by("-updated_at")
+
+    serializer = SyllabusSerializer(history_syllabuses, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def reviewer_syllabus_detail(request, syllabus_id):
+    """
+    GET /api/reviewer/syllabuses/<id>/?reviewer_id=...
+    Returns syllabus details for review.
+    """
+    reviewer_id = request.query_params.get("reviewer_id")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+    except User.DoesNotExist:
+        return Response({"detail": "Reviewer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        syllabus = Syllabus.objects.select_related("course", "uploaded_by", "course__department").get(id=syllabus_id)
+    except Syllabus.DoesNotExist:
+        return Response({"detail": "Syllabus not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Verify reviewer has access (same department)
+    if syllabus.course.department != reviewer.department:
+        return Response({"detail": "You don't have permission to view this syllabus."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = SyllabusSerializer(syllabus)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def reviewer_check_syllabus_ai(request, syllabus_id):
+    """
+    POST /api/reviewer/syllabuses/<id>/check-ai/
+    Runs AI validation check on syllabus using OpenAI.
+    """
+    import os
+    import json
+    
+    reviewer_id = request.data.get("reviewer_id") or request.query_params.get("reviewer_id")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+        syllabus = Syllabus.objects.select_related("course", "course__department").get(id=syllabus_id)
+    except (User.DoesNotExist, Syllabus.DoesNotExist):
+        return Response({"detail": "Reviewer or syllabus not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if syllabus.course.department != reviewer.department:
+        return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    # Check if OpenAI API key is available
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return Response(
+            {"detail": "OpenAI API key not configured. Please set OPENAI_API_KEY in environment."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Prepare syllabus data for AI analysis
+        syllabus_data = {
+            "course_name": syllabus.course.name,
+            "course_code": syllabus.course.code,
+            "academic_year": syllabus.academic_year or "Not specified",
+            "course_type": syllabus.course_type or "Not specified",
+            "purpose": syllabus.purpose or "Not provided",
+            "learning_outputs": syllabus.learning_outputs or "Not provided",
+            "course_description": syllabus.course_description or "Not provided",
+            "literature": syllabus.literature or "Not provided",
+            "teaching_methods": syllabus.teaching_methods_planned or "Not provided",
+            "guidelines": syllabus.guidelines or "Not provided",
+            "weeks": [{"week": w.week_number, "topic": w.topic, "sources": w.sources} 
+                     for w in syllabus.weeks.all()],
+            "assessments": [{"title": a.title, "percent": a.percent} 
+                          for a in syllabus.assessments.all()],
+        }
+        
+        # Calculate assessment total
+        assessment_total = sum(a.percent for a in syllabus.assessments.all())
+        
+        # Create prompt for AI
+        prompt = f"""You are an academic reviewer analyzing a course syllabus. Review the following syllabus and provide:
+1. Compliance check with academic standards
+2. Completeness assessment
+3. Quality evaluation
+4. Specific recommendations
+
+Syllabus Details:
+Course: {syllabus_data['course_name']} ({syllabus_data['course_code']})
+Academic Year: {syllabus_data['academic_year']}
+Course Type: {syllabus_data['course_type']}
+
+Purpose: {syllabus_data['purpose']}
+
+Learning Outcomes: {syllabus_data['learning_outputs']}
+
+Course Description: {syllabus_data['course_description']}
+
+Literature: {syllabus_data['literature']}
+
+Teaching Methods: {syllabus_data['teaching_methods']}
+
+Guidelines: {syllabus_data['guidelines']}
+
+Weekly Plan:
+{json.dumps(syllabus_data['weeks'], indent=2, ensure_ascii=False)}
+
+Assessments:
+{json.dumps(syllabus_data['assessments'], indent=2, ensure_ascii=False)}
+Total Assessment Percentage: {assessment_total}%
+
+Please provide a comprehensive review focusing on:
+- Completeness of all required sections
+- Clarity and coherence of content
+- Academic rigor and standards
+- Assessment structure (should total 100%)
+- Any missing or unclear information
+- Specific recommendations for improvement
+
+Format your response as a clear, structured review."""
+
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert academic reviewer specializing in curriculum and syllabus evaluation. Provide detailed, constructive feedback."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1500
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Extract findings and recommendations
+        findings = []
+        if assessment_total == 100:
+            findings.append("✓ Assessment percentages correctly total 100%")
+        else:
+            findings.append(f"⚠ Assessment percentages total {assessment_total}% (should be 100%)")
+        
+        if syllabus_data['purpose'] and syllabus_data['purpose'] != "Not provided":
+            findings.append("✓ Purpose section is provided")
+        else:
+            findings.append("⚠ Purpose section is missing or incomplete")
+            
+        if syllabus_data['learning_outputs'] and syllabus_data['learning_outputs'] != "Not provided":
+            findings.append("✓ Learning outcomes are provided")
+        else:
+            findings.append("⚠ Learning outcomes are missing or incomplete")
+        
+        if len(syllabus_data['weeks']) > 0:
+            findings.append(f"✓ Weekly plan includes {len(syllabus_data['weeks'])} weeks")
+        else:
+            findings.append("⚠ Weekly plan is missing")
+        
+        results = {
+            "results": ai_response,
+            "findings": findings,
+            "recommendations": "Review the detailed AI analysis above for specific recommendations.",
+        }
+        
+        return Response(results, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {"detail": f"AI check failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["POST"])
+def reviewer_compare_versions(request, syllabus_id):
+    """
+    POST /api/reviewer/syllabuses/<id>/compare-ai/
+    Compares current syllabus version with previous approved/rejected version using OpenAI.
+    """
+    import os
+    import json
+    
+    reviewer_id = request.data.get("reviewer_id") or request.query_params.get("reviewer_id")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+        current_syllabus = Syllabus.objects.select_related("course", "course__department").get(id=syllabus_id)
+    except (User.DoesNotExist, Syllabus.DoesNotExist):
+        return Response({"detail": "Reviewer or syllabus not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if current_syllabus.course.department != reviewer.department:
+        return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    # Find previous version (APPROVED or REJECTED)
+    previous_syllabus = Syllabus.objects.filter(
+        course=current_syllabus.course,
+        uploaded_by=current_syllabus.uploaded_by,
+        academic_year=current_syllabus.academic_year,
+        status__in=["APPROVED", "REJECTED"]
+    ).exclude(id=syllabus_id).order_by("-updated_at").first()
+
+    if not previous_syllabus:
+        return Response({"detail": "No previous version found for comparison."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check if OpenAI API key is available
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return Response(
+            {"detail": "OpenAI API key not configured. Please set OPENAI_API_KEY in environment."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Prepare data for both versions
+        def prepare_syllabus_data(syllabus):
+            return {
+                "version": syllabus.version,
+                "status": syllabus.status,
+                "purpose": syllabus.purpose or "",
+                "learning_outputs": syllabus.learning_outputs or "",
+                "course_description": syllabus.course_description or "",
+                "literature": syllabus.literature or "",
+                "teaching_methods": syllabus.teaching_methods_planned or "",
+                "guidelines": syllabus.guidelines or "",
+                "weeks": [{"week": w.week_number, "topic": w.topic, "sources": w.sources} 
+                         for w in syllabus.weeks.all()],
+                "assessments": [{"title": a.title, "percent": a.percent} 
+                              for a in syllabus.assessments.all()],
+            }
+        
+        previous_data = prepare_syllabus_data(previous_syllabus)
+        current_data = prepare_syllabus_data(current_syllabus)
+        
+        # Create comparison prompt
+        prompt = f"""You are an academic reviewer comparing two versions of a course syllabus. 
+
+PREVIOUS VERSION (Version {previous_syllabus.version}, Status: {previous_syllabus.status}):
+{json.dumps(previous_data, indent=2, ensure_ascii=False)}
+
+CURRENT VERSION (Version {current_syllabus.version}, Status: {current_syllabus.status}):
+{json.dumps(current_data, indent=2, ensure_ascii=False)}
+
+Please provide a detailed comparison highlighting:
+1. What has been added, removed, or modified
+2. Key differences in content, structure, or approach
+3. Whether the changes improve or potentially weaken the syllabus
+4. Specific areas that need attention
+5. Overall assessment of the changes
+
+Format your response clearly, highlighting additions with [+] and removals with [-]."""
+
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert academic reviewer specializing in curriculum comparison and change analysis. Provide detailed, structured comparisons."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Create summary
+        summary = f"Comparison between Version {previous_syllabus.version} ({previous_syllabus.status}) and Version {current_syllabus.version} ({current_syllabus.status})."
+        
+        differences = {
+            "differences": ai_response,
+            "summary": summary,
+            "changes": f"Previous version had {len(previous_data['weeks'])} weeks and {len(previous_data['assessments'])} assessments. "
+                      f"Current version has {len(current_data['weeks'])} weeks and {len(current_data['assessments'])} assessments.",
+        }
+
+        return Response(differences, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {"detail": f"AI comparison failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["POST"])
+def reviewer_approve_syllabus(request, syllabus_id):
+    """
+    POST /api/reviewer/syllabuses/<id>/approve/
+    Approves a syllabus and sends email notification to lecturer.
+    """
+    reviewer_id = request.data.get("reviewer_id")
+    comment = request.data.get("comment", "")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+        syllabus = Syllabus.objects.select_related("course", "uploaded_by").get(id=syllabus_id)
+    except (User.DoesNotExist, Syllabus.DoesNotExist):
+        return Response({"detail": "Reviewer or syllabus not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if syllabus.course.department != reviewer.department:
+        return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    if syllabus.status != "PENDING_REVIEW":
+        return Response({"detail": "Only PENDING_REVIEW syllabuses can be approved."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update syllabus status
+    syllabus.status = "APPROVED"
+    syllabus.reviewer_comment = comment
+    syllabus.save()
+
+    # Send email notification to lecturer
+    lecturer = syllabus.uploaded_by
+    try:
+        send_mail(
+            subject=f"Syllabus Approved: {syllabus.course.name}",
+            message=f"Your syllabus for {syllabus.course.name} ({syllabus.course.code}) has been approved.\n\n"
+                   f"Reviewer comment: {comment or 'No additional comments.'}\n\n"
+                   f"You can view the approved syllabus in your dashboard.",
+            from_email=settings.DEFAULT_FROM_EMAIL if hasattr(settings, 'DEFAULT_FROM_EMAIL') else 'noreply@csms.edu',
+            recipient_list=[lecturer.email],
+            fail_silently=True,
+        )
+    except Exception as e:
+        # Log error but don't fail the request
+        print(f"Failed to send email: {e}")
+
+    serializer = SyllabusSerializer(syllabus)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def reviewer_reject_syllabus(request, syllabus_id):
+    """
+    POST /api/reviewer/syllabuses/<id>/reject/
+    Rejects a syllabus with explanation and sends email notification to lecturer.
+    """
+    reviewer_id = request.data.get("reviewer_id")
+    comment = request.data.get("comment", "")
+    explanation = request.data.get("explanation", "")
+
+    if not reviewer_id:
+        return Response({"detail": "reviewer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not explanation and not comment:
+        return Response({"detail": "Explanation or comment is required when rejecting."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reviewer = User.objects.get(id=reviewer_id, role="REVIEWER")
+        syllabus = Syllabus.objects.select_related("course", "uploaded_by").get(id=syllabus_id)
+    except (User.DoesNotExist, Syllabus.DoesNotExist):
+        return Response({"detail": "Reviewer or syllabus not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if syllabus.course.department != reviewer.department:
+        return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    if syllabus.status != "PENDING_REVIEW":
+        return Response({"detail": "Only PENDING_REVIEW syllabuses can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update syllabus status
+    syllabus.status = "REJECTED"
+    syllabus.reviewer_comment = explanation or comment
+    syllabus.save()
+
+    # Send email notification to lecturer
+    lecturer = syllabus.uploaded_by
+    try:
+        send_mail(
+            subject=f"Syllabus Rejected: {syllabus.course.name}",
+            message=f"Your syllabus for {syllabus.course.name} ({syllabus.course.code}) has been rejected.\n\n"
+                   f"Reviewer feedback:\n{explanation or comment}\n\n"
+                   f"Please review the comments, make necessary changes, and resubmit.",
+            from_email=settings.DEFAULT_FROM_EMAIL if hasattr(settings, 'DEFAULT_FROM_EMAIL') else 'noreply@csms.edu',
+            recipient_list=[lecturer.email],
+            fail_silently=True,
+        )
+    except Exception as e:
+        # Log error but don't fail the request
+        print(f"Failed to send email: {e}")
+
+    serializer = SyllabusSerializer(syllabus)
+    return Response(serializer.data, status=status.HTTP_200_OK)

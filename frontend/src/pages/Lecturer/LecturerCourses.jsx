@@ -240,7 +240,7 @@ const statusBadge = (course) => {
                 </div>
                 <div className="text-xs text-slate-500">
                   {course.latest_syllabus?.updated_at
-                    ? `Last updated: ${course.latest_syllabus.updated_at.slice(0, 10)}`
+                    ? `Last updated: ${course.latest_syllabus.updated_at.includes('T') ? course.latest_syllabus.updated_at.slice(0, 16).replace('T', ' ') : course.latest_syllabus.updated_at.slice(0, 16)}`
                     : "No syllabus submitted yet"}
                 </div>
               </div>

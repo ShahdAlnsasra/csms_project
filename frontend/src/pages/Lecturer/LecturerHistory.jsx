@@ -242,7 +242,7 @@ export default function LecturerHistory() {
                 <div className="text-xs text-slate-600 line-clamp-2">
                   {(item.content || "").slice(0, 140) || "Syllabus content"}
                 </div>
-                <div className="text-xs text-slate-500">Updated: {item.updated_at?.slice(0, 10) || ""}</div>
+                <div className="text-xs text-slate-500">Updated: {item.updated_at ? (item.updated_at.includes('T') ? item.updated_at.slice(0, 16).replace('T', ' ') : item.updated_at.slice(0, 16)) : ""}</div>
               </div>
 
               <div className="flex items-center gap-3">

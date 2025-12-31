@@ -471,3 +471,66 @@ export async function askSyllabusAssistant({ syllabusId, message, language, curr
   const res = await API.post(`lecturer/syllabuses/${syllabusId}/chat/ask/`, payload);
   return res.data; // { reply, mode }
 }
+
+// ===== Reviewer API =====
+export async function fetchReviewerNewSyllabuses({ reviewerId, departmentId }) {
+  if (!reviewerId) return [];
+  const params = { reviewer_id: reviewerId };
+  if (departmentId) params.department_id = departmentId;
+  const res = await API.get("reviewer/syllabuses/new/", { params });
+  return res.data || [];
+}
+
+export async function fetchReviewerEditedSyllabuses({ reviewerId, departmentId }) {
+  if (!reviewerId) return [];
+  const params = { reviewer_id: reviewerId };
+  if (departmentId) params.department_id = departmentId;
+  const res = await API.get("reviewer/syllabuses/edited/", { params });
+  return res.data || [];
+}
+
+export async function fetchReviewerHistorySyllabuses({ reviewerId, departmentId }) {
+  if (!reviewerId) return [];
+  const params = { reviewer_id: reviewerId };
+  if (departmentId) params.department_id = departmentId;
+  const res = await API.get("reviewer/syllabuses/history/", { params });
+  return res.data || [];
+}
+
+export async function fetchReviewerSyllabusById({ reviewerId, syllabusId }) {
+  const res = await API.get(`reviewer/syllabuses/${syllabusId}/`, {
+    params: { reviewer_id: reviewerId },
+  });
+  return res.data;
+}
+
+export async function checkSyllabusByAI({ reviewerId, syllabusId }) {
+  const res = await API.post(`reviewer/syllabuses/${syllabusId}/check-ai/`, {
+    reviewer_id: reviewerId,
+  });
+  return res.data; // { results, findings, recommendations }
+}
+
+export async function compareSyllabusVersions({ reviewerId, syllabusId }) {
+  const res = await API.post(`reviewer/syllabuses/${syllabusId}/compare-ai/`, {
+    reviewer_id: reviewerId,
+  });
+  return res.data; // { differences, summary, changes }
+}
+
+export async function approveSyllabus({ reviewerId, syllabusId, comment }) {
+  const res = await API.post(`reviewer/syllabuses/${syllabusId}/approve/`, {
+    reviewer_id: reviewerId,
+    comment: comment || "",
+  });
+  return res.data;
+}
+
+export async function rejectSyllabus({ reviewerId, syllabusId, comment, explanation }) {
+  const res = await API.post(`reviewer/syllabuses/${syllabusId}/reject/`, {
+    reviewer_id: reviewerId,
+    comment: comment || "",
+    explanation: explanation || "",
+  });
+  return res.data;
+}

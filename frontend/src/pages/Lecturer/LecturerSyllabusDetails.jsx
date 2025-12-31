@@ -501,13 +501,13 @@ const cloneAndEdit = async () => {
               </div>
               <div className="text-sm mt-1">{statusBanner.desc}</div>
 
-              {isRejected && reviewerComment && (
+              {isRejected && (
                 <div className="mt-3 rounded-2xl border border-amber-200 bg-white/70 p-4">
                   <div className="text-xs font-extrabold uppercase tracking-[0.14em] text-amber-700">
                     Reviewer comment
                   </div>
                   <div className="mt-2 text-sm text-slate-800 whitespace-pre-wrap">
-                    {reviewerComment}
+                    {reviewerComment || "No comment provided."}
                   </div>
                 </div>
               )}
@@ -643,4 +643,8 @@ const cloneAndEdit = async () => {
     </div>
   );
 }
+
+
+
+
 

@@ -97,12 +97,19 @@ urlpatterns = [
     path("lecturer/syllabuses/<int:syllabus_id>/clone/", views.clone_lecturer_syllabus),
     path("ai/syllabus-draft/", ai_syllabus_draft),
     path("ai/syllabus-chat/", syllabus_chat),
+    path("ai/syllabus/revise/", views.ai_syllabus_revise, name="ai-syllabus-revise"),
     path("lecturer/syllabuses/<int:syllabus_id>/chat/", views.syllabus_chat_history),
     path("lecturer/syllabuses/<int:syllabus_id>/chat/ask/", views.syllabus_chat_ask),
 
-
-
-
+    # ====== REVIEWER API ======
+    path("reviewer/syllabuses/new/", views.reviewer_new_syllabuses, name="reviewer-new-syllabuses"),
+    path("reviewer/syllabuses/edited/", views.reviewer_edited_syllabuses, name="reviewer-edited-syllabuses"),
+    path("reviewer/syllabuses/history/", views.reviewer_history_syllabuses, name="reviewer-history-syllabuses"),
+    path("reviewer/syllabuses/<int:syllabus_id>/", views.reviewer_syllabus_detail, name="reviewer-syllabus-detail"),
+    path("reviewer/syllabuses/<int:syllabus_id>/check-ai/", views.reviewer_check_syllabus_ai, name="reviewer-check-ai"),
+    path("reviewer/syllabuses/<int:syllabus_id>/compare-ai/", views.reviewer_compare_versions, name="reviewer-compare-versions"),
+    path("reviewer/syllabuses/<int:syllabus_id>/approve/", views.reviewer_approve_syllabus, name="reviewer-approve"),
+    path("reviewer/syllabuses/<int:syllabus_id>/reject/", views.reviewer_reject_syllabus, name="reviewer-reject"),
 
     
 ]

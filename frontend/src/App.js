@@ -38,6 +38,15 @@ import LecturerSyllabusNew from "./pages/Lecturer/LecturerSyllabusNew";
 import LecturerSyllabusDetails from "./pages/Lecturer/LecturerSyllabusDetails";
 import LecturerSyllabusEdit from "./pages/Lecturer/LecturerSyllabusEdit";
 
+// Reviewer
+import ReviewerLayout from "./components/ReviewerLayout";
+import ReviewerDashboard from "./pages/Reviewer/ReviewerDashboard";
+import ReviewerNewSyllabuses from "./pages/Reviewer/ReviewerNewSyllabuses";
+import ReviewerEditedSyllabuses from "./pages/Reviewer/ReviewerEditedSyllabuses";
+import ReviewerHistory from "./pages/Reviewer/ReviewerHistory";
+import ReviewerSyllabusDetail from "./pages/Reviewer/ReviewerSyllabusDetail";
+import ReviewerEditedSyllabusDetail from "./pages/Reviewer/ReviewerEditedSyllabusDetail";
+
 function App() {
   return (
     <Router>
@@ -89,6 +98,18 @@ function App() {
               <Route path="courses/:courseId/new" element={<LecturerSyllabusNew />} />
               <Route path="courses/:courseId/versions/:versionId" element={<LecturerSyllabusDetails />} />
               <Route path="courses/:courseId/versions/:versionId/edit" element={<LecturerSyllabusEdit />} />
+              <Route path="profile" element={<UserProfile />} />
+            </Route>
+
+            {/* Reviewer */}
+            <Route path="/reviewer" element={<ReviewerLayout />}>
+              <Route index element={<ReviewerDashboard />} />
+              <Route path="dashboard" element={<ReviewerDashboard />} />
+              <Route path="new-syllabuses" element={<ReviewerNewSyllabuses />} />
+              <Route path="new-syllabuses/:syllabusId" element={<ReviewerSyllabusDetail />} />
+              <Route path="edited-syllabuses" element={<ReviewerEditedSyllabuses />} />
+              <Route path="edited-syllabuses/:syllabusId" element={<ReviewerEditedSyllabusDetail />} />
+              <Route path="history" element={<ReviewerHistory />} />
               <Route path="profile" element={<UserProfile />} />
             </Route>
           </Routes>
