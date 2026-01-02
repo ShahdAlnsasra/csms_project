@@ -14,7 +14,7 @@ import {
 } from "@heroicons/react/24/solid";
 
 import FancySelect from "../../components/FancySelect";
-import { fetchLecturerCourses, fetchDeptCourses, fetchYears } from "../../api/api";
+import { fetchLecturerCourses, fetchYears } from "../../api/api";
 
 const statusLabel = {
   DRAFT: "Draft",
@@ -53,16 +53,12 @@ export default function LecturerCourses() {
 
     Promise.all([
       fetchLecturerCourses({ lecturerId: user.id, departmentId: deptId }),
-      fetchDeptCourses({ departmentId: deptId }),
       fetchYears(deptId),
     ])
-      .then(([lecturerList, deptList, yearsArr]) => {
-        const listToUse =
-          Array.isArray(lecturerList) && lecturerList.length > 0
-            ? lecturerList
-            : Array.isArray(deptList)
-            ? deptList
-            : [];
+      .then(([lecturerList, yearsArr]) => {
+        // ✅ Only show courses assigned to this lecturer by department admin
+        // No fallback to all department courses - lecturers only see their assigned courses
+        const listToUse = Array.isArray(lecturerList) ? lecturerList : [];
 
         setCourses(listToUse);
         setYearOptions(Array.isArray(yearsArr) ? yearsArr : []);

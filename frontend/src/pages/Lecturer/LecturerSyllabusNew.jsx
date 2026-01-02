@@ -11,6 +11,7 @@ import { askSyllabusAssistant } from "../../api/api";
 import FancySelect from "../../components/FancySelect";
 import {
   fetchLecturerCourseById,
+  fetchLecturerCourses,
   createLecturerSyllabus,
   updateLecturerSyllabus,
   fetchDepartments,
@@ -527,6 +528,16 @@ export default function LecturerSyllabusNew() {
 
   // ✅ support route with/without courseId in params
   const courseId = params.courseId || qs.get("courseId") || "";
+  
+  // Immediate debug log for courseId extraction
+  useEffect(() => {
+    console.log("[INIT] Component mounted/updated:", {
+      params: params,
+      courseId: courseId,
+      location: location.pathname,
+      search: location.search,
+    });
+  }, [params, courseId, location]);
 
   const [form, setForm] = useState(initialForm);
   const [deptYears, setDeptYears] = useState([]);
@@ -558,6 +569,10 @@ export default function LecturerSyllabusNew() {
   const [chatMessages, setChatMessages] = useState([{ role: "assistant", content: "היי 😊 כתבי לי מה את רוצה לשפר/לתקן בסילבוס ואני אעזור." },]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [formSnapshot, setFormSnapshot] = useState(null);
+  const [showChangesPanel, setShowChangesPanel] = useState(false);
+  const [changesSummary, setChangesSummary] = useState(null);
+  const [openQuestions, setOpenQuestions] = useState([]);
   const lockStudyYear = Boolean(courseMeta?.studyYear);   // אם הגיע מה-DB ננעל
 
   const sendChatMessage = async () => {
@@ -629,12 +644,36 @@ export default function LecturerSyllabusNew() {
   const academicStartYear = useMemo(() => getAcademicStartYear(), []);
   const defaultAcademicYear = `${academicStartYear}-${academicStartYear + 1}`;
 
+  // ✅ Reset course-specific fields when courseId changes (for navigation between courses)
+  useEffect(() => {
+    if (courseId && !isEdit) {
+      // Reset course-specific fields when switching to a new course
+      setForm((p) => ({
+        ...p,
+        courseName: "",
+        departmentId: "",
+        credits: "",
+        studyYear: "",
+        semester: "",
+      }));
+      setCourseMeta(null);
+      setDepartmentLabel("");
+      setDeptYears([]);
+    }
+  }, [courseId, isEdit]);
+
   // ✅ default academic year
   useEffect(() => {
     setForm((p) => ({ ...p, academicYear: p.academicYear || defaultAcademicYear }));
   }, [defaultAcademicYear]);
 
-  const setField = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const setField = (k, v) => {
+    // Force string conversion for select fields to prevent type mismatches
+    const stringFields = ["studyYear", "semester", "departmentId", "academicYear"];
+    const valueToSet = stringFields.includes(k) ? String(v || "") : v;
+    console.log(`[DEBUG] setField: ${k} =`, { old: form[k], new: valueToSet, type: typeof valueToSet });
+    setForm((p) => ({ ...p, [k]: valueToSet }));
+  };
 
   const typeOptions = [
     { value: "", label: "Select course type" },
@@ -651,10 +690,12 @@ export default function LecturerSyllabusNew() {
   ];
 
   const yearsOptions = useMemo(() => {
-    return [
+    const options = [
       { value: "", label: "Select study year" },
       ...deptYears.map((y) => ({ value: String(y), label: `Year ${y}` })),
     ];
+    console.log("[DEBUG] yearsOptions built:", { deptYears, optionsCount: options.length, options });
+    return options;
   }, [deptYears]);
 
   const semesterOptions = useMemo(() => {
@@ -667,17 +708,50 @@ export default function LecturerSyllabusNew() {
           }))
         : arr.map((s) => ({ value: String(s), label: semesterLabel(s) }));
 
-    return [{ value: "", label: "Select semester" }, ...normalized];
-  }, [semesters]);
+    const options = [{ value: "", label: "Select semester" }, ...normalized];
+    console.log("[DEBUG] semesterOptions built:", { semesters: arr, optionsCount: options.length, options, currentFormSemester: form.semester });
+    return options;
+  }, [semesters, form.semester]);
 
   // ✅ load departments + course meta + semesters + prev versions
 useEffect(() => {
+  console.log("[EFFECT] Course data useEffect triggered", {
+    courseId: courseId,
+    courseIdType: typeof courseId,
+    courseIdLength: courseId?.length,
+    params: params,
+  });
+  
   const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
-  if (!user || !courseId) return;
+  console.log("[EFFECT] User check:", {
+    userExists: !!user,
+    userId: user?.id,
+    userEmail: user?.email,
+    csmsUserRaw: localStorage.getItem("csmsUser"),
+  });
+  
+  if (!user) {
+    console.error("[EFFECT] No user found in localStorage!");
+    setErrors(["Please log in again. User session not found."]);
+    return;
+  }
+  
+  if (!courseId) {
+    console.error("[EFFECT] No courseId found! Cannot load course data.", {
+      params: params,
+      qs: qs.toString(),
+    });
+    setErrors(["Course ID is missing. Please navigate from the courses page."]);
+    return;
+  }
 
   (async () => {
+    setPageLoading(true);
+    setErrors([]);
     try {
+      console.log("[EFFECT] Starting data fetch...");
       const [deps, sems] = await Promise.all([fetchDepartments(), fetchSemesters()]);
+      console.log("[EFFECT] Departments and semesters fetched:", { deps: deps?.length, sems: sems?.length });
 
       const depsArr =
         Array.isArray(deps) ? deps :
@@ -690,6 +764,7 @@ useEffect(() => {
         Array.isArray(sems?.results) ? sems.results :
         Array.isArray(sems?.data) ? sems.data :
         [];
+      console.log("[DEBUG] Semesters fetched:", { raw: sems, processed: semsArr });
       setSemesters(semsArr);
 
       // ✅ prev versions (כדי שגם usedYears יעבוד וגם Previous Versions בטאב)
@@ -700,52 +775,112 @@ useEffect(() => {
       );
 
       // ✅ course meta
+      console.log("[EFFECT] Fetching course with lecturerId:", user.id, "courseId:", courseId);
       const course = await fetchLecturerCourseById({ lecturerId: user.id, courseId });
-      console.log("course full object:", course);
-      if (!course) return;
-      const deptCodeFromCourse = course.department_code;
-      const deptNameFromCourse = course.department_name;
-      const deptObj =
-      depsArr.find((d) => String(d.code) === String(deptCodeFromCourse)) ||
-      depsArr.find((d) => String(d.name) === String(deptNameFromCourse)) ||
-      depsArr.find((d) => String(d.id) === String(course.department_id));
-      const deptId = deptObj?.id || course.department_id || "";
-
-
-      // ✅ years: dept -> course.department -> fetchYears fallback (כמה פורמטים)
-      let yearsList = normalizeDeptYears(
-        deptObj?.years_of_study ??
-        deptObj?.yearsOfStudy ??
-        course?.department?.years_of_study ??
-        course?.department?.yearsOfStudy ??
-        deptObj?.years
-      );
-      console.log("deptObj:", deptObj);
-      console.log("deptId:", deptId);
-      console.log("yearsList:", yearsList);
-
-
-      if (!yearsList.length && deptId) {
-        // נסיון בכמה צורות כי לא ברור איך הפונקציה כתובה אצלך ב-api.js
-        const attempts = [
-           () => fetchYears(deptId),
-        ];
-
-        for (const fn of attempts) {
-          try {
-            const ys = await fn();
-            const norm = normalizeDeptYears(ys);
-            if (norm.length) {
-              yearsList = norm;
-              break;
-            }
-          } catch {
-            // continue
+      console.log("[EFFECT] Course API response:", course);
+      if (!course) {
+        console.error("[EFFECT] Course not found for courseId:", courseId, "lecturerId:", user.id);
+        // Get available courses to show in error message
+        try {
+          const allCourses = await fetchLecturerCourses({ lecturerId: user.id });
+          const availableIds = allCourses.map(c => c.id);
+          console.log("[EFFECT] Available courses for this lecturer:", allCourses.map(c => ({ id: c.id, name: c.name })));
+          
+          if (availableIds.length === 0) {
+            setErrors([
+              `⚠️ You have NO courses assigned to your lecturer account (ID: ${user.id}). ` +
+              `Course ID ${courseId} exists in the backend but is not assigned to you. ` +
+              `SOLUTION: In Django admin, go to the Course model, find course ID ${courseId}, ` +
+              `and add your lecturer account (ID: ${user.id}) to the "lecturers" field. ` +
+              `Alternatively, navigate from the Courses page if courses are assigned there.`
+            ]);
+          } else {
+            setErrors([
+              `Course ID ${courseId} is not assigned to you. ` +
+              `Available course IDs: ${availableIds.join(', ')}. ` +
+              `Please navigate from the Courses page to select a course you have access to.`
+            ]);
           }
+        } catch (e) {
+          console.error("[EFFECT] Error fetching available courses:", e);
+          setErrors([
+            `Course not found (ID: ${courseId}). ` +
+            `Please verify you have access to this course. ` +
+            `Check Network tab for API response. Error: ${e.message}`
+          ]);
+        }
+        setPageLoading(false);
+        return;
+      }
+      
+      console.log("Course found:", {
+        name: course.name,
+        credits: course.credits,
+        department_code: course.department_code,
+        department_name: course.department_name,
+        department_id: course.department_id,
+      });
+      
+      // Extract department info from course
+      const deptCodeFromCourse = course.department_code || course.department?.code;
+      const deptNameFromCourse = course.department_name || course.department?.name;
+      const deptIdFromCourse = course.department_id || course.department?.id;
+      
+      // Find department object
+      const deptObj =
+        (deptCodeFromCourse && depsArr.find((d) => String(d.code) === String(deptCodeFromCourse))) ||
+        (deptNameFromCourse && depsArr.find((d) => String(d.name) === String(deptNameFromCourse))) ||
+        (deptIdFromCourse && depsArr.find((d) => String(d.id) === String(deptIdFromCourse))) ||
+        null;
+      
+      const deptId = deptObj?.id || deptIdFromCourse || "";
+
+
+      // ✅ years: prioritize fetchYears API call, then fallback to deptObj.years_of_study
+      let yearsList = [];
+      
+      console.log("[DEBUG] Fetching years for deptId:", deptId, "deptObj:", deptObj);
+      
+      if (deptId) {
+        try {
+          // First try to fetch years from API endpoint
+          console.log("[DEBUG] Calling fetchYears API with deptId:", deptId);
+          const apiYears = await fetchYears(deptId);
+          console.log("[DEBUG] fetchYears API response:", apiYears);
+          if (Array.isArray(apiYears) && apiYears.length > 0) {
+            yearsList = apiYears;
+            console.log("[DEBUG] Using API years:", yearsList);
+          } else {
+            console.warn("[DEBUG] API returned empty or invalid years array:", apiYears);
+          }
+        } catch (e) {
+          console.error("[DEBUG] Failed to fetch years from API:", e);
+          console.warn("Failed to fetch years from API, trying fallback:", e);
+        }
+      } else {
+        console.warn("[DEBUG] No deptId available, cannot fetch years");
+      }
+      
+      // Fallback: extract from department object
+      if (!yearsList.length) {
+        const deptYearsValue = 
+          deptObj?.years_of_study ||
+          deptObj?.yearsOfStudy ||
+          course?.department?.years_of_study ||
+          course?.department?.yearsOfStudy;
+        
+        console.log("[DEBUG] Trying fallback years from deptObj:", { deptYearsValue, deptObj, course });
+        
+        if (deptYearsValue) {
+          yearsList = normalizeDeptYears(deptYearsValue);
+          console.log("[DEBUG] Normalized years from fallback:", yearsList);
+        } else {
+          console.warn("[DEBUG] No years found in deptObj or course.department");
         }
       }
 
       yearsList = Array.from(new Set(yearsList)).sort((a, b) => a - b);
+      console.log("[DEBUG] Final yearsList to set:", yearsList);
       setDeptYears(yearsList);
 
       // ✅ department label
@@ -773,25 +908,83 @@ useEffect(() => {
         course.year_of_study ??
         course.yearOfStudy;
 
-      setCourseMeta({
-        courseName: course.name || "",
-        departmentId: deptId ? String(deptId) : "",
-        credits: toNiceNumberString(rawCredits),
+      const courseName = course.name || "";
+      const creditsStr = toNiceNumberString(rawCredits);
+      const semesterStr = course.semester ? String(course.semester) : "";
+
+      console.log("[DEBUG] Setting course meta:", {
+        courseName,
+        departmentId: deptId,
+        credits: creditsStr,
         studyYear: courseYear ? String(courseYear) : "",
-        semester: course.semester ? String(course.semester) : "",
+        semester: semesterStr,
+        rawCourseData: {
+          name: course.name,
+          credits: course.credits,
+          semester: course.semester,
+          department_code: course.department_code,
+          department_name: course.department_name,
+          department_id: course.department_id,
+        },
       });
 
-      setForm((prev) => ({
-        ...prev,
-        academicYear: prev.academicYear || defaultAcademicYear,
-        courseName: course.name || prev.courseName,
-        departmentId: deptId ? String(deptId) : prev.departmentId,
-        credits: toNiceNumberString(rawCredits) || prev.credits,
-        studyYear: courseYear ? String(courseYear) : prev.studyYear,
-        semester: course.semester ? String(course.semester) : prev.semester,
-      }));
+      setCourseMeta({
+        courseName,
+        departmentId: deptId ? String(deptId) : "",
+        credits: creditsStr,
+        studyYear: courseYear ? String(courseYear) : "",
+        semester: semesterStr,
+      });
+
+      // Always set course data when loading course - prioritize course data over previous values
+      setForm((prev) => {
+        const updated = {
+          ...prev,
+          academicYear: prev.academicYear || defaultAcademicYear,
+          // Always use course data if available, otherwise keep previous
+          courseName: courseName || prev.courseName || "",
+          departmentId: deptId ? String(deptId) : (prev.departmentId || ""),
+          credits: creditsStr || prev.credits || "",
+          studyYear: courseYear ? String(courseYear) : (prev.studyYear || ""),
+          semester: semesterStr || prev.semester || "",
+        };
+        console.log("[DEBUG] Form state update:", {
+          before: { 
+            courseName: prev.courseName, 
+            credits: prev.credits, 
+            departmentId: prev.departmentId,
+            studyYear: prev.studyYear,
+            semester: prev.semester,
+          },
+          after: { 
+            courseName: updated.courseName, 
+            credits: updated.credits, 
+            departmentId: updated.departmentId,
+            studyYear: updated.studyYear,
+            semester: updated.semester,
+          },
+          courseData: { courseName, creditsStr, deptId, courseYear, semesterStr },
+        });
+        return updated;
+      });
+      
+      console.log("[EFFECT] Course data loading completed successfully");
+      setPageLoading(false);
     } catch (e) {
-      setErrors([e?.message || "Failed to load initial data"]);
+      console.error("[EFFECT] Error loading course data:", e);
+      console.error("[EFFECT] Error details:", {
+        message: e?.message,
+        response: e?.response?.data,
+        status: e?.response?.status,
+        stack: e?.stack,
+      });
+      setErrors([
+        e?.response?.data?.detail || 
+        e?.response?.data?.message || 
+        e?.message || 
+        "Failed to load course data. Check console for details."
+      ]);
+      setPageLoading(false);
     }
   })();
 }, [courseId, defaultAcademicYear]);
@@ -810,7 +1003,15 @@ useEffect(() => {
       .then((syll) => {
        const st = String(syll?.status || "DRAFT").toUpperCase();
        setSyllabusStatus(st);
-       setReviewerComment(syll?.reviewer_comment || syll?.rejection_reason || "");
+       const comment = syll?.reviewer_comment || syll?.rejection_reason || "";
+       console.log("[LECTURER] Setting reviewer comment:", {
+         status: st,
+         reviewer_comment: syll?.reviewer_comment,
+         rejection_reason: syll?.rejection_reason,
+         finalComment: comment,
+         commentLength: comment?.length,
+       });
+       setReviewerComment(comment);
        // ✅ אם זה לא DRAFT — נציג הודעה (העריכה אמורה להגיע רק אחרי Clone)
        const canEditNow = st === "DRAFT" || st === "REJECTED";
        const canAutoClone = (isFixMode && st === "REJECTED") || (isReviseMode && st === "APPROVED");
@@ -1363,11 +1564,17 @@ const handleSubmit = async (saveAs) => {
       
       <div className="grid grid-cols-1 gap-6 items-start">
         <div className="space-y-4">  
-          {/* ✅ show reviewer comment in REJECTED - always show when syllabus is rejected */}
-          {((fixRejected || syllabusStatus === "REJECTED") && reviewerComment) && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          {/* ✅ show reviewer comment for REJECTED or APPROVED - always show when there's a comment */}
+          {(syllabusStatus === "REJECTED" || syllabusStatus === "APPROVED") && (
+            <div className={`rounded-2xl border p-4 ${
+              syllabusStatus === "REJECTED" 
+                ? "border-amber-200 bg-amber-50 text-amber-900" 
+                : "border-emerald-200 bg-emerald-50 text-emerald-900"
+            }`}>
               <div className="font-bold">Reviewer comment</div>
-              <div className="text-sm mt-1 whitespace-pre-wrap">{reviewerComment}</div>
+              <div className="text-sm mt-1 whitespace-pre-wrap">
+                {reviewerComment && reviewerComment.trim() ? reviewerComment : "No comment provided by reviewer."}
+              </div>
             </div>
           )}
 <div className="flex items-center justify-between">
@@ -1423,7 +1630,7 @@ const handleSubmit = async (saveAs) => {
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-6">
             <div className="text-left">
               <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">
-                {form.courseName || `Course #${courseId}`} — Syllabus form {isEdit ? "(Edit)" : ""}
+                {form.courseName || courseMeta?.courseName || `Course #${courseId}`} — Syllabus form {isEdit ? "(Edit)" : ""}
               </h1>
               <p className="text-sm text-slate-600">
                 {isEdit ? "Edit your existing syllabus." : "Fill manually or click AI to auto-fill the content."}
@@ -1433,7 +1640,7 @@ const handleSubmit = async (saveAs) => {
             <SectionTitle>Course details</SectionTitle>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Course name" value={form.courseName} onChange={() => {}} readOnly disabled />
+              <Field label="Course name" value={form.courseName || courseMeta?.courseName || ""} onChange={() => {}} readOnly disabled />
               <Field label="Department" value={departmentLabel || "—"} onChange={() => {}} readOnly disabled />
 
               <div className="relative">
@@ -1455,7 +1662,7 @@ const handleSubmit = async (saveAs) => {
                 <YearPicker />
               </div>
 
-              <Field label="Credit points" type="number" value={form.credits} onChange={() => {}} readOnly disabled />
+              <Field label="Credit points" type="number" value={form.credits || courseMeta?.credits || ""} onChange={() => {}} readOnly disabled />
 
               <label className="flex flex-col gap-1 text-[13px] font-medium text-slate-800 font-sans">
                 <span className="flex items-center gap-1">
@@ -1475,15 +1682,40 @@ const handleSubmit = async (saveAs) => {
               <label className="flex flex-col gap-1 text-[13px] font-medium text-slate-800 font-sans">
                 <span className="flex items-center gap-1">
                   Study year <span className="text-rose-600">*</span>
+                  {deptYears.length === 0 && (
+                    <span className="text-xs text-amber-600 ml-2">(Loading years...)</span>
+                  )}
                 </span>
-                <FancySelect value={form.studyYear} onChange={(v) => setField("studyYear", v)} options={yearsOptions} disabled={lockStudyYear} />
+                {deptYears.length === 0 ? (
+                  <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-700">
+                    No study years available. Check console for errors.
+                  </div>
+                ) : (
+                  <FancySelect 
+                    value={String(form.studyYear || "")} 
+                    onChange={(v) => {
+                      console.log("[DEBUG] StudyYear onChange:", { old: form.studyYear, new: v, type: typeof v, yearsOptions });
+                      setField("studyYear", v);
+                    }} 
+                    options={yearsOptions} 
+                    disabled={lockStudyYear} 
+                  />
+                )}
               </label>
 
               <label className="flex flex-col gap-1 text-[13px] font-medium text-slate-800 font-sans">
                 <span className="flex items-center gap-1">
                   Semester <span className="text-rose-600">*</span>
                 </span>
-                <FancySelect value={form.semester} onChange={() => {}} options={semesterOptions} disabled />
+                <FancySelect 
+                  value={String(form.semester || "")} 
+                  onChange={(v) => {
+                    console.log("[DEBUG] Semester onChange:", { old: form.semester, new: v, type: typeof v });
+                    setField("semester", v);
+                  }} 
+                  options={semesterOptions} 
+                  disabled={lockStudyYear} 
+                />
               </label>
 
               <Field label="Instructor email" value={form.instructorEmail} onChange={(v) => setField("instructorEmail", v)} />

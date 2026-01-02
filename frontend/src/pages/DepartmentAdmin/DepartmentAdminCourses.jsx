@@ -331,6 +331,28 @@ export default function DepartmentAdminCourses() {
     e.preventDefault();
     if (!departmentId || !selectedYear) return;
 
+    // ✅ Validate required fields (description is optional)
+    if (!form.name.trim()) {
+      setCreateError("Course name is required.");
+      return;
+    }
+    if (!form.code.trim()) {
+      setCreateError("Course code is required.");
+      return;
+    }
+    if (!form.credits || Number(form.credits) <= 0) {
+      setCreateError("Credits must be greater than 0.");
+      return;
+    }
+    if (!form.semester) {
+      setCreateError("Semester is required.");
+      return;
+    }
+    if (!form.lecturerIds || form.lecturerIds.length === 0) {
+      setCreateError("At least one lecturer must be selected.");
+      return;
+    }
+
     setCreating(true);
     setCreateError("");
     setCreateSuccess("");
@@ -674,7 +696,7 @@ export default function DepartmentAdminCourses() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Course code
+                    Course code <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -690,7 +712,7 @@ export default function DepartmentAdminCourses() {
 
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Course name
+                    Course name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -709,24 +731,25 @@ export default function DepartmentAdminCourses() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Credits
+                    Credits <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     step="0.5"
-                    min="0"
+                    min="0.5"
                     max="10"
                     value={form.credits}
                     onChange={(e) =>
                       handleFormChange("credits", e.target.value)
                     }
                     className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    required
                   />
                 </div>
 
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Semester
+                    Semester <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={form.semester}
@@ -734,7 +757,9 @@ export default function DepartmentAdminCourses() {
                       handleFormChange("semester", e.target.value)
                     }
                     className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    required
                   >
+                    <option value="">Select semester</option>
                     <option value="A">Semester A</option>
                     <option value="B">Semester B</option>
                     <option value="SUMMER">Summer</option>
@@ -743,7 +768,12 @@ export default function DepartmentAdminCourses() {
 
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Lecturers
+                    Lecturers <span className="text-red-500">*</span>
+                    {form.lecturerIds.length > 0 && (
+                      <span className="ml-2 text-xs font-normal text-emerald-700">
+                        ({form.lecturerIds.length} selected)
+                      </span>
+                    )}
                   </label>
                   <select
                     multiple
@@ -757,13 +787,21 @@ export default function DepartmentAdminCourses() {
                       )
                     }
                     className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 h-20"
+                    required
                   >
-                    {lecturers.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.full_name} ({l.email})
-                      </option>
-                    ))}
+                    {lecturers.length === 0 ? (
+                      <option disabled>No lecturers available</option>
+                    ) : (
+                      lecturers.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.full_name} ({l.email})
+                        </option>
+                      ))
+                    )}
                   </select>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Hold Ctrl (Windows) or Cmd (Mac) to select multiple lecturers
+                  </p>
                 </div>
               </div>
 

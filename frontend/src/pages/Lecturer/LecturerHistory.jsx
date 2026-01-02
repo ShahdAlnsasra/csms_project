@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { FunnelIcon, MagnifyingGlassIcon, ClockIcon } from "@heroicons/react/24/solid";
 
 import FancySelect from "../../components/FancySelect";
-import { fetchLecturerSyllabuses, fetchLecturerCourses, fetchDeptCourses, fetchYears } from "../../api/api";
+import { fetchLecturerSyllabuses, fetchLecturerCourses, fetchDeptCourses, fetchYears, fetchDepartments } from "../../api/api";
 
 const statusMeta = [
   { value: "all", label: "Status" },
@@ -114,6 +114,7 @@ export default function LecturerHistory() {
   const [items, setItems] = useState([]);
   const [lecturerCourses, setLecturerCourses] = useState([]);
   const [deptYears, setDeptYears] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -134,11 +135,11 @@ export default function LecturerHistory() {
       fetchLecturerCourses({ lecturerId: user.id, departmentId: deptId }),
       fetchDeptCourses({ departmentId: deptId }),
       fetchYears(deptId),
+      fetchDepartments(),
     ])
-      .then(([history, lecturerList, deptList, yearsArr]) => {
+      .then(([history, lecturerList, deptList, yearsArr, deps]) => {
         const historyArr = Array.isArray(history) ? history : (history?.results || []);
         setItems(pickApprovedPlusLatestWorkPerCourseYear(historyArr));
-
 
         const listToUse =
           Array.isArray(lecturerList) && lecturerList.length > 0
@@ -149,6 +150,9 @@ export default function LecturerHistory() {
 
         setLecturerCourses(listToUse);
         setDeptYears(Array.isArray(yearsArr) ? yearsArr : []);
+        
+        const depsArr = Array.isArray(deps) ? deps : (Array.isArray(deps?.results) ? deps.results : (Array.isArray(deps?.data) ? deps.data : []));
+        setDepartments(depsArr);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -242,7 +246,19 @@ export default function LecturerHistory() {
                 <div className="text-xs text-slate-600 line-clamp-2">
                   {(item.content || "").slice(0, 140) || "Syllabus content"}
                 </div>
-                <div className="text-xs text-slate-500">Updated: {item.updated_at ? (item.updated_at.includes('T') ? item.updated_at.slice(0, 16).replace('T', ' ') : item.updated_at.slice(0, 16)) : ""}</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-xs text-slate-500">Updated: {item.updated_at ? (item.updated_at.includes('T') ? item.updated_at.slice(0, 16).replace('T', ' ') : item.updated_at.slice(0, 16)) : ""}</div>
+                  {(() => {
+                    const deptId = item.department_id || item.course?.department_id || item.course?.department?.id;
+                    const dept = deptId ? departments.find(d => String(d.id) === String(deptId)) : null;
+                    const deptLabel = dept ? `${dept.name}${dept.code ? ` (${dept.code})` : ""}` : (item.course?.department_name ? `${item.course.department_name}${item.course.department_code ? ` (${item.course.department_code})` : ""}` : "");
+                    return deptLabel ? (
+                      <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                        {deptLabel}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
               </div>
 
               <div className="flex items-center gap-3">

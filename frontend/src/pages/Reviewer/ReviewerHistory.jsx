@@ -8,7 +8,7 @@ import {
   ArrowLeftIcon,
 } from "@heroicons/react/24/solid";
 import FancySelect from "../../components/FancySelect";
-import { fetchReviewerHistorySyllabuses } from "../../api/api";
+import { fetchReviewerHistorySyllabuses, fetchDepartments } from "../../api/api";
 
 const statusColors = {
   APPROVED: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -23,6 +23,7 @@ const statusLabel = {
 export default function ReviewerHistory() {
   const [search, setSearch] = useState("");
   const [items, setItems] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,8 +39,11 @@ export default function ReviewerHistory() {
         : user.department?.id || user.department_id || user.departmentId;
 
     setLoading(true);
-    fetchReviewerHistorySyllabuses({ reviewerId: user.id, departmentId: deptId })
-      .then((data) => {
+    Promise.all([
+      fetchReviewerHistorySyllabuses({ reviewerId: user.id, departmentId: deptId }),
+      fetchDepartments(),
+    ])
+      .then(([data, deps]) => {
         const arr = Array.isArray(data) ? data : data?.results || [];
         
         // Sort by updated_at descending
@@ -50,6 +54,9 @@ export default function ReviewerHistory() {
         });
         
         setItems(arr);
+        
+        const depsArr = Array.isArray(deps) ? deps : (Array.isArray(deps?.results) ? deps.results : (Array.isArray(deps?.data) ? deps.data : []));
+        setDepartments(depsArr);
       })
       .catch((error) => {
         console.error("Error fetching history:", error);
@@ -155,8 +162,20 @@ export default function ReviewerHistory() {
                   <div className="text-xs text-slate-600 line-clamp-2">
                     {(item.content || "").slice(0, 140) || "Syllabus content"}
                   </div>
-                  <div className="text-xs text-slate-500">
-                    {item.status === "APPROVED" ? "Approved" : "Rejected"}: {item.updated_at ? (item.updated_at.includes('T') ? item.updated_at.slice(0, 16).replace('T', ' ') : item.updated_at.slice(0, 16)) : ""}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-xs text-slate-500">
+                      {item.status === "APPROVED" ? "Approved" : "Rejected"}: {item.updated_at ? (item.updated_at.includes('T') ? item.updated_at.slice(0, 16).replace('T', ' ') : item.updated_at.slice(0, 16)) : ""}
+                    </div>
+                    {(() => {
+                      const deptId = item.department_id || item.course?.department_id || item.course?.department?.id;
+                      const dept = deptId ? departments.find(d => String(d.id) === String(deptId)) : null;
+                      const deptLabel = dept ? `${dept.name}${dept.code ? ` (${dept.code})` : ""}` : (item.course?.department_name ? `${item.course.department_name}${item.course.department_code ? ` (${item.course.department_code})` : ""}` : "");
+                      return deptLabel ? (
+                        <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                          {deptLabel}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
 

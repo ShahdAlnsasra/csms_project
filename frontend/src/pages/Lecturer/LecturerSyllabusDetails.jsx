@@ -312,6 +312,13 @@ export default function LecturerSyllabusDetails() {
 
   const reviewerComment =
     syllabus?.reviewer_comment || syllabus?.rejection_reason || "";
+  
+  console.log("[LECTURER DETAILS] Reviewer comment:", {
+    reviewer_comment: syllabus?.reviewer_comment,
+    rejection_reason: syllabus?.rejection_reason,
+    finalComment: reviewerComment,
+    hasComment: !!reviewerComment && reviewerComment.trim().length > 0,
+  });
 
   const statusBanner = useMemo(() => {
     if (isPending) {
@@ -501,13 +508,17 @@ const cloneAndEdit = async () => {
               </div>
               <div className="text-sm mt-1">{statusBanner.desc}</div>
 
-              {isRejected && (
-                <div className="mt-3 rounded-2xl border border-amber-200 bg-white/70 p-4">
-                  <div className="text-xs font-extrabold uppercase tracking-[0.14em] text-amber-700">
+              {(isRejected || isApproved) && reviewerComment && (
+                <div className={`mt-3 rounded-2xl border bg-white/70 p-4 ${
+                  isRejected ? "border-amber-200" : "border-emerald-200"
+                }`}>
+                  <div className={`text-xs font-extrabold uppercase tracking-[0.14em] ${
+                    isRejected ? "text-amber-700" : "text-emerald-700"
+                  }`}>
                     Reviewer comment
                   </div>
                   <div className="mt-2 text-sm text-slate-800 whitespace-pre-wrap">
-                    {reviewerComment || "No comment provided."}
+                    {reviewerComment}
                   </div>
                 </div>
               )}

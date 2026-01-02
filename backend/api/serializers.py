@@ -227,6 +227,8 @@ class SyllabusSerializer(serializers.ModelSerializer):
     course_year = serializers.IntegerField(source="course.year", read_only=True)
     course_semester = serializers.CharField(source="course.semester", read_only=True)
     department_id = serializers.IntegerField(source="course.department_id", read_only=True)
+    department_name = serializers.CharField(source="course.department.name", read_only=True)
+    department_code = serializers.CharField(source="course.department.code", read_only=True)
 
     # ✅ חשוב: required=False כדי לא לחייב תמיד nested בשמירה כטיוטה
     weeks = SyllabusWeekSerializer(many=True, required=False)
@@ -242,6 +244,8 @@ class SyllabusSerializer(serializers.ModelSerializer):
             "course_year",
             "course_semester",
             "department_id",
+            "department_name",
+            "department_code",
             "uploaded_by",
             "version",
             "status",

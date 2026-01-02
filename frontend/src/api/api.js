@@ -82,17 +82,49 @@ export async function createDepartment(dept) {
 
 // ---- YEARS PER DEPARTMENT ----
 export async function fetchYears(deptId) {
-  if (!deptId) return [];
-  const res = await API.get(`departments/${deptId}/years/`);
-  // { years: [1,2,3] }
-  return res.data?.years || [];
+  if (!deptId) {
+    console.warn("[API] fetchYears: No deptId provided");
+    return [];
+  }
+  try {
+    console.log("[API] fetchYears: Calling API with deptId:", deptId);
+    const res = await API.get(`departments/${deptId}/years/`);
+    console.log("[API] fetchYears: Response:", res.data);
+    // { years: [1,2,3] }
+    const years = res.data?.years || [];
+    console.log("[API] fetchYears: Extracted years:", years);
+    return years;
+  } catch (error) {
+    console.error("[API] fetchYears: Error:", error);
+    console.error("[API] fetchYears: Error details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      url: `departments/${deptId}/years/`,
+    });
+    return [];
+  }
 }
 
 // ---- SEMESTERS (גלובלי מה־choices) ----
 export async function fetchSemesters() {
-  const res = await API.get("semesters/");
-  // { semesters: ["A","B","SUMMER"] }
-  return res.data?.semesters || [];
+  try {
+    console.log("[API] fetchSemesters: Calling API");
+    const res = await API.get("semesters/");
+    console.log("[API] fetchSemesters: Response:", res.data);
+    // { semesters: ["A","B","SUMMER"] }
+    const semesters = res.data?.semesters || [];
+    console.log("[API] fetchSemesters: Extracted semesters:", semesters);
+    return semesters;
+  } catch (error) {
+    console.error("[API] fetchSemesters: Error:", error);
+    console.error("[API] fetchSemesters: Error details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    return [];
+  }
 }
 
 // תשאירי פה גם את פונקציית login שלך שכבר עובדת ✔
@@ -277,12 +309,88 @@ export async function fetchLecturerCourses({ lecturerId, departmentId, year } = 
 }
 
 export async function fetchLecturerCourseById({ lecturerId, courseId }) {
-  if (!lecturerId || !courseId) return null;
-  const res = await API.get("lecturer/courses/", {
-    params: { lecturer_id: lecturerId },
-  });
-  const list = res.data || [];
-  return list.find((c) => String(c.id) === String(courseId)) || null;
+  if (!lecturerId || !courseId) {
+    console.warn("[API] fetchLecturerCourseById: Missing params", { lecturerId, courseId });
+    return null;
+  }
+  try {
+    console.log("[API] fetchLecturerCourseById: Calling API", { lecturerId, courseId, courseIdType: typeof courseId });
+    const res = await API.get("lecturer/courses/", {
+      params: { lecturer_id: lecturerId },
+    });
+    let list = res.data || [];
+    console.log("[API] fetchLecturerCourseById: Courses list received:", {
+      count: list.length,
+      courseIds: list.map(c => ({ id: c.id, name: c.name })),
+      searchingFor: courseId,
+    });
+    
+    // If lecturer has no assigned courses, try fallback: fetch from department
+    if (list.length === 0) {
+      console.warn("[API] fetchLecturerCourseById: Lecturer has no assigned courses, trying department fallback");
+      try {
+        // Get user's department
+        const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
+        const deptId = user?.department?.id || user?.department_id || user?.department;
+        if (deptId) {
+          console.log("[API] fetchLecturerCourseById: Fetching department courses as fallback, deptId:", deptId);
+          const deptRes = await API.get("department-admin/courses/", {
+            params: { department_id: deptId },
+          });
+          const deptCourses = deptRes.data || [];
+          console.log("[API] fetchLecturerCourseById: Department courses found:", deptCourses.length);
+          // Transform department course format to match lecturer course format
+          list = deptCourses.map(c => ({
+            id: c.id,
+            name: c.name,
+            code: c.code,
+            year: c.year,
+            semester: c.semester,
+            credits: c.credits,
+            department_name: c.department_name || c.department?.name,
+            department_code: c.department_code || c.department?.code,
+            department_id: c.department_id || c.department?.id || c.department,
+          }));
+          console.log("[API] fetchLecturerCourseById: Using department courses as fallback:", {
+            count: list.length,
+            courseIds: list.map(c => ({ id: c.id, name: c.name })),
+          });
+        }
+      } catch (fallbackError) {
+        console.warn("[API] fetchLecturerCourseById: Fallback failed:", fallbackError);
+      }
+    }
+    
+    // Try multiple matching strategies
+    let course = list.find((c) => String(c.id) === String(courseId));
+    if (!course) {
+      course = list.find((c) => Number(c.id) === Number(courseId));
+    }
+    if (!course) {
+      course = list.find((c) => c.id == courseId); // loose equality
+    }
+    
+    console.log("[API] fetchLecturerCourseById: Found course:", course);
+    
+    if (!course) {
+      console.error("[API] fetchLecturerCourseById: Course not found", {
+        courseId,
+        availableCourseIds: list.map(c => c.id),
+        lecturerId,
+        message: "Course not found in assigned courses or department courses."
+      });
+    }
+    
+    return course || null;
+  } catch (error) {
+    console.error("[API] fetchLecturerCourseById: Error:", error);
+    console.error("[API] fetchLecturerCourseById: Error details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    return null;
+  }
 }
 
 export async function fetchLecturerSyllabuses({ lecturerId, courseId, status, year }) {

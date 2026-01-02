@@ -114,17 +114,54 @@ export default function ReviewerEditedSyllabusDetail() {
         if (cancelled) return;
         setSyllabus(syllabusData);
 
+        console.log("[REVIEWER EDITED] Syllabus data received:", {
+          syllabusData,
+          course: syllabusData?.course,
+          department_id: syllabusData?.department_id,
+          department_name: syllabusData?.department_name,
+          department_code: syllabusData?.department_code,
+          course_department: syllabusData?.course?.department,
+        });
+        console.log("[REVIEWER EDITED] Departments list:", deps);
+
+        // Try multiple sources for department info
         const deptId =
-          typeof syllabusData?.course?.department === "number" ||
+          syllabusData?.department_id ||
+          syllabusData?.course?.department_id ||
+          (typeof syllabusData?.course?.department === "number" ||
           typeof syllabusData?.course?.department === "string"
             ? syllabusData.course.department
-            : syllabusData?.course?.department?.id;
+            : syllabusData?.course?.department?.id);
 
-        const dept = Array.isArray(deps)
-          ? deps.find((d) => String(d.id) === String(deptId))
-          : null;
-        if (dept) {
-          setDepartmentLabel(`${dept.name}${dept.code ? ` (${dept.code})` : ""}`);
+        console.log("[REVIEWER EDITED] Extracted deptId:", deptId);
+
+        // Try to get department from departments list
+        const depsArr = Array.isArray(deps) ? deps : (Array.isArray(deps?.results) ? deps.results : (Array.isArray(deps?.data) ? deps.data : []));
+        const dept = deptId ? depsArr.find((d) => String(d.id) === String(deptId)) : null;
+        
+        console.log("[REVIEWER EDITED] Found department from list:", dept);
+        
+        // Priority: 1) department_name/department_code from serializer, 2) departments list, 3) course fallback
+        if (syllabusData?.department_name || syllabusData?.department_code) {
+          const deptName = syllabusData.department_name || "";
+          const deptCode = syllabusData.department_code || "";
+          const label = deptName ? `${deptName}${deptCode ? ` (${deptCode})` : ""}` : "";
+          console.log("[REVIEWER EDITED] Setting department label from serializer:", label);
+          setDepartmentLabel(label);
+        } else if (dept) {
+          const label = `${dept.name}${dept.code ? ` (${dept.code})` : ""}`;
+          console.log("[REVIEWER EDITED] Setting department label from dept list:", label);
+          setDepartmentLabel(label);
+        } else if (syllabusData?.course?.department_name || syllabusData?.course?.department_code) {
+          // Fallback: use department name/code from course if available
+          const deptName = syllabusData.course.department_name || "";
+          const deptCode = syllabusData.course.department_code || "";
+          const label = deptName ? `${deptName}${deptCode ? ` (${deptCode})` : ""}` : "";
+          console.log("[REVIEWER EDITED] Setting department label from course:", label);
+          setDepartmentLabel(label);
+        } else {
+          console.warn("[REVIEWER EDITED] No department found in any source");
+          setDepartmentLabel("");
         }
       })
       .catch((e) => {
@@ -351,26 +388,60 @@ export default function ReviewerEditedSyllabusDetail() {
           </div>
 
           {/* Action buttons - only show if not read-only */}
-          {!showDecisionForm && !finalIsReadOnly && (
+          {!finalIsReadOnly && (
             <div className="flex gap-3 flex-wrap">
-              <button
-                type="button"
-                onClick={handleCompareVersions}
-                disabled={compareLoading}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-violet-600 to-purple-500 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition disabled:opacity-60"
-              >
-                <DocumentMagnifyingGlassIcon className="h-5 w-5" />
-                {compareLoading ? "Comparing..." : "Use AI to Compare with Previous Version"}
-              </button>
-              <button
-                type="button"
-                onClick={handleCheckByAI}
-                disabled={aiLoading}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-indigo-600 to-sky-500 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition disabled:opacity-60"
-              >
-                <SparklesIcon className="h-5 w-5" />
-                {aiLoading ? "Checking..." : "Check by AI"}
-              </button>
+              {!showDecisionForm && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCompareVersions}
+                    disabled={compareLoading}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-violet-600 to-purple-500 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition disabled:opacity-60"
+                  >
+                    <DocumentMagnifyingGlassIcon className="h-5 w-5" />
+                    {compareLoading ? "Comparing..." : "Use AI to Compare with Previous Version"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCheckByAI}
+                    disabled={aiLoading}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-indigo-600 to-sky-500 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition disabled:opacity-60"
+                  >
+                    <SparklesIcon className="h-5 w-5" />
+                    {aiLoading ? "Checking..." : "Check by AI"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDecisionForm(true)}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-slate-600 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition hover:bg-slate-700"
+                  >
+                    <DocumentMagnifyingGlassIcon className="h-5 w-5" />
+                    Review Manually
+                  </button>
+                </>
+              )}
+              {showDecisionForm && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCompareVersions}
+                    disabled={compareLoading}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-violet-600 to-purple-500 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition disabled:opacity-60"
+                  >
+                    <DocumentMagnifyingGlassIcon className="h-5 w-5" />
+                    {compareLoading ? "Comparing..." : "Use AI to Compare with Previous Version"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCheckByAI}
+                    disabled={aiLoading}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-r from-indigo-600 to-sky-500 text-white text-sm font-extrabold shadow-lg hover:shadow-xl transition disabled:opacity-60"
+                  >
+                    <SparklesIcon className="h-5 w-5" />
+                    {aiLoading ? "Checking..." : "Check by AI"}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
