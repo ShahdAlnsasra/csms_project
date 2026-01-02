@@ -243,6 +243,7 @@ export default function LecturerHistory() {
                 <div className="text-sm font-semibold text-slate-900">
                   {item.course_name} • {item.course_semester || ""} {item.course_year}
                 </div>
+                
                 <div className="text-xs text-slate-600 line-clamp-2">
                   {(item.content || "").slice(0, 140) || "Syllabus content"}
                 </div>
