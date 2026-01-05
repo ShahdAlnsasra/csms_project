@@ -149,23 +149,6 @@ class Syllabus(models.Model):
     ]
 
 
-class SyllabusWeek(models.Model):
-    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="weeks")
-    week_number = models.PositiveIntegerField(validators=[MinValueValidator(1)])
-    topic = models.TextField()
-    sources = models.TextField(blank=True, null=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["course", "uploaded_by", "academic_year", "version"],
-                name="uniq_syllabus_course_lecturer_year_version",
-            )
-        ]
-    def __str__(self):
-        return f"Week {self.week_number} ({self.syllabus})"
-
-
 class SyllabusAssessment(models.Model):
     syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="assessments")
     title = models.CharField(max_length=200)
@@ -503,12 +486,6 @@ class SyllabusWeek(models.Model):
 
     def __str__(self):
         return f"Week {self.week_number} ({self.syllabus})"
-
-
-class SyllabusAssessment(models.Model):
-    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name="assessments")
-    title = models.CharField(max_length=200)
-    percent = models.PositiveIntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)])
 
 class SyllabusChatMessage(models.Model):
     syllabus = models.ForeignKey(
