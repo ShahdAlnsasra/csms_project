@@ -7,12 +7,11 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
 } from "@heroicons/react/24/solid";
-import { fetchReviewerNewSyllabuses, fetchReviewerEditedSyllabuses } from "../../api/api";
+import { fetchReviewerNewSyllabuses } from "../../api/api";
 
 export default function ReviewerDashboard() {
   const navigate = useNavigate();
   const [pendingCount, setPendingCount] = useState(0);
-  const [editedCount, setEditedCount] = useState(0);
   const [loadingCount, setLoadingCount] = useState(false);
 
   useEffect(() => {
@@ -25,25 +24,14 @@ export default function ReviewerDashboard() {
         : user.department?.id || user.department_id || user.departmentId;
 
     setLoadingCount(true);
-    Promise.all([
-      fetchReviewerNewSyllabuses({ reviewerId: user.id, departmentId: deptId }),
-      fetchReviewerEditedSyllabuses({ reviewerId: user.id, departmentId: deptId }),
-    ])
-      .then(([newData, editedData]) => {
-        const newArr = Array.isArray(newData) ? newData : newData?.results || [];
-        // Count only PENDING_REVIEW status for new syllabuses
-        const pending = newArr.filter(item => item.status === "PENDING_REVIEW").length;
+    fetchReviewerNewSyllabuses({ reviewerId: user.id, departmentId: deptId })
+      .then((data) => {
+        const arr = Array.isArray(data) ? data : data?.results || [];
+        // Count only PENDING_REVIEW status
+        const pending = arr.filter(item => item.status === "PENDING_REVIEW").length;
         setPendingCount(pending);
-        
-        const editedArr = Array.isArray(editedData) ? editedData : editedData?.results || [];
-        // Count only PENDING_REVIEW status for edited syllabuses
-        const editedPending = editedArr.filter(item => item.status === "PENDING_REVIEW").length;
-        setEditedCount(editedPending);
       })
-      .catch(() => {
-        setPendingCount(0);
-        setEditedCount(0);
-      })
+      .catch(() => setPendingCount(0))
       .finally(() => setLoadingCount(false));
   }, []);
 
@@ -133,23 +121,11 @@ export default function ReviewerDashboard() {
                 <PencilSquareIcon className="h-6 w-6 text-emerald-600" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base md:text-lg font-semibold text-slate-900">
-                    Edited Syllabuses
-                  </h2>
-                  {!loadingCount && editedCount > 0 && (
-                    <span className="inline-flex items-center justify-center h-6 px-2 rounded-full bg-emerald-600 text-white text-xs font-bold">
-                      {editedCount}
-                    </span>
-                  )}
-                </div>
+                <h2 className="text-base md:text-lg font-semibold text-slate-900">
+                  Edited Syllabuses
+                </h2>
                 <p className="mt-1 text-xs text-slate-500 max-w-xs">
                   Review updated versions of existing syllabuses that need rechecking.
-                  {!loadingCount && editedCount > 0 && (
-                    <span className="block mt-1 font-semibold text-emerald-600">
-                      {editedCount} {editedCount === 1 ? 'syllabus' : 'syllabuses'} waiting for review
-                    </span>
-                  )}
                 </p>
               </div>
             </div>
