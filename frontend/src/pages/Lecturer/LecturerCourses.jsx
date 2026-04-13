@@ -7,6 +7,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   FunnelIcon,
+  ClockIcon,
 } from "@heroicons/react/24/solid";
 import { fetchLecturerCourses, fetchYears } from "../../api/api";
 
@@ -46,10 +47,34 @@ export default function LecturerCourses() {
 
   const statusBadge = (course) => {
     if (course.latest_syllabus) {
+      const status = String(course.latest_syllabus.status || "").toUpperCase();
+      const statusColors = {
+        APPROVED: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        REJECTED: "bg-rose-100 text-rose-700 border-rose-200",
+        PENDING_REVIEW: "bg-amber-100 text-amber-800 border-amber-200",
+        PENDING_DEPT: "bg-amber-100 text-amber-800 border-amber-200",
+        DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
+      };
+      const colorClass = statusColors[status] || "bg-slate-100 text-slate-700 border-slate-200";
+      const statusLabel = {
+        APPROVED: "Approved",
+        REJECTED: "Rejected",
+        PENDING_REVIEW: "Pending reviewer",
+        PENDING_DEPT: "Pending department",
+        DRAFT: "Draft",
+      };
+      const label = statusLabel[status] || status || "Has syllabus";
+      
       return (
-        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold">
-          <CheckCircleIcon className="h-4 w-4" />
-          {course.latest_syllabus.status || "Has syllabus"}
+        <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold ${colorClass}`}>
+          {status === "APPROVED" ? (
+            <CheckCircleIcon className="h-4 w-4" />
+          ) : status === "REJECTED" ? (
+            <ExclamationTriangleIcon className="h-4 w-4" />
+          ) : (
+            <ClockIcon className="h-4 w-4" />
+          )}
+          {label}
         </span>
       );
     }

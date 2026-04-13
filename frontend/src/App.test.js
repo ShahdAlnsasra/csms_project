@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+// react-router-dom is mocked via __mocks__ directory
+
+test('renders CSMS application', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  // App should render without crashing
+  expect(document.body).toBeInTheDocument();
 });

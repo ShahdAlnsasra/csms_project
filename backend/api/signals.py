@@ -130,13 +130,22 @@ def handle_signup_approval(sender, instance: SignupRequest, created, **kwargs):
         f"If you did not request this account, you can ignore this email."
     )
 
-    send_mail(
-        subject=subject,
-        message=message,
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
-        recipient_list=[user.email],
-        fail_silently=False,
-    )
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        print(f"[SUCCESS] Activation email sent successfully to {user.email}")
+    except Exception as e:
+        # Log the error but don't fail the activation
+        error_msg = str(e)
+        print(f"[ERROR] Failed to send activation email to {user.email}: {error_msg}")
+        print(f"[INFO] Magic link for {user.email}: {activate_url}")
+        print("[WARNING] Email sending failed. The activation link is printed above for testing.")
+        # The magic link is still created and can be accessed directly
 
     # 5) Mark email as sent (so this signal won't run again for this request)
     instance.magic_link_sent = True

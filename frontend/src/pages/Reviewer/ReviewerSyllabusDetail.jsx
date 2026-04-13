@@ -6,6 +6,7 @@ import {
   SparklesIcon,
   CheckCircleIcon,
   XCircleIcon,
+  DocumentMagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
 import {
   fetchReviewerSyllabusById,
@@ -327,9 +328,9 @@ export default function ReviewerSyllabusDetail() {
             </div>
           </div>
 
-          {/* AI Check button - only show if not read-only */}
-          {!showDecisionForm && !finalIsReadOnly && (
-            <div className="flex gap-3">
+          {/* AI Check button - always visible when not read-only */}
+          {!finalIsReadOnly && (
+            <div className="flex gap-3 flex-wrap">
               <button
                 type="button"
                 onClick={handleCheckByAI}
@@ -339,6 +340,16 @@ export default function ReviewerSyllabusDetail() {
                 <SparklesIcon className="h-5 w-5" />
                 {aiLoading ? "Checking..." : "Check by AI"}
               </button>
+              {!showDecisionForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowDecisionForm(true)}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-slate-700 text-white text-sm font-extrabold shadow-lg hover:bg-slate-800 hover:shadow-xl transition"
+                >
+                  <DocumentMagnifyingGlassIcon className="h-5 w-5" />
+                  Review Manually
+                </button>
+              )}
             </div>
           )}
 

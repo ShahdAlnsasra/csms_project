@@ -545,6 +545,13 @@ export default function LecturerSyllabusNew() {
   const [fixDraftId, setFixDraftId] = useState(null);
   const [reviseDraftId, setReviseDraftId] = useState(null);
 
+  // AI update results panel
+  const [showChangesPanel, setShowChangesPanel] = useState(false);
+  const [changesSummary, setChangesSummary] = useState([]);
+  const [openQuestions, setOpenQuestions] = useState([]);
+
+  // Dirty-check snapshot (you are using this later)
+  const [formSnapshot, setFormSnapshot] = useState(null);
 
 
   const [pageLoading, setPageLoading] = useState(false);
@@ -807,10 +814,28 @@ useEffect(() => {
 
     fetchLecturerSyllabusById({ lecturerId: user.id, syllabusId })
       
-      .then((syll) => {
+      .then(async (syll) => {
        const st = String(syll?.status || "DRAFT").toUpperCase();
        setSyllabusStatus(st);
-       setReviewerComment(syll?.reviewer_comment || syll?.rejection_reason || "");
+       
+       // ✅ Load reviewer comment from current syllabus or from original rejected syllabus
+       let comment = syll?.reviewer_comment || syll?.rejection_reason || "";
+       
+       // ✅ If this is a cloned draft (fix mode), fetch comment from original rejected syllabus
+       if ((st === "DRAFT" || !comment) && (isFixDraft || isFixMode)) {
+         const originalId = localStorage.getItem(`fixFrom_${syllabusId}`);
+         if (originalId) {
+           try {
+             const originalSyll = await fetchLecturerSyllabusById({ lecturerId: user.id, syllabusId: originalId });
+             comment = originalSyll?.reviewer_comment || originalSyll?.rejection_reason || comment;
+           } catch (e) {
+             console.warn("Failed to load reviewer comment from original syllabus:", e);
+           }
+         }
+       }
+       
+       setReviewerComment(comment);
+       
        // ✅ אם זה לא DRAFT — נציג הודעה (העריכה אמורה להגיע רק אחרי Clone)
        const canEditNow = st === "DRAFT" || st === "REJECTED";
        const canAutoClone = (isFixMode && st === "REJECTED") || (isReviseMode && st === "APPROVED");
@@ -877,7 +902,7 @@ useEffect(() => {
         setPageError(err?.response?.data?.detail || "Failed to load syllabus for editing");
       })
       .finally(() => setPageLoading(false));
-  }, [isEdit, syllabusId, isFixMode, isReviseMode]);
+  }, [isEdit, syllabusId, isFixMode, isReviseMode, isFixDraft]);
   useEffect(() => {
   const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
   if (!user) return;
@@ -1093,14 +1118,14 @@ const handleUpdateByAI = async () => {
     
     // Update snapshot after applying changes
     setFormSnapshot({
-      purpose: form.purpose,
-      learningOutputs: form.learningOutputs,
-      courseDescription: form.courseDescription,
-      literature: form.literature,
-      teachingMethodsPlanned: form.teachingMethodsPlanned,
-      guidelines: form.guidelines,
-      weeksPlan: [...weeksPlan],
-      assessments: [...assessments],
+        purpose: result.purpose ?? form.purpose,
+        learningOutputs: result.learningOutputs ?? form.learningOutputs,
+        courseDescription: result.courseDescription ?? form.courseDescription,
+        literature: result.literature ?? form.literature,
+       teachingMethodsPlanned: result.teachingMethodsPlanned ?? form.teachingMethodsPlanned,
+       guidelines: result.guidelines ?? form.guidelines,
+       weeksPlan: Array.isArray(result.weeksPlan) ? result.weeksPlan : weeksPlan,
+       assessments: Array.isArray(result.assessments) ? result.assessments : assessments,
     });
   } catch (error) {
     setErrors([error.message || "AI update failed"]);
@@ -1363,8 +1388,8 @@ const handleSubmit = async (saveAs) => {
       
       <div className="grid grid-cols-1 gap-6 items-start">
         <div className="space-y-4">  
-          {/* ✅ show reviewer comment in REJECTED - always show when syllabus is rejected */}
-          {((fixRejected || syllabusStatus === "REJECTED") && reviewerComment) && (
+          {/* ✅ show reviewer comment when it exists (even if status is DRAFT after cloning) */}
+          {reviewerComment && (fixRejected || isFixMode || isFixDraft || syllabusStatus === "REJECTED" || isReviseMode) && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
               <div className="font-bold">Reviewer comment</div>
               <div className="text-sm mt-1 whitespace-pre-wrap">{reviewerComment}</div>
@@ -1393,13 +1418,13 @@ const handleSubmit = async (saveAs) => {
     </button>
   </div>
 
-  {/* Update by AI button - show only for REJECTED/revise mode, otherwise Fill by AI */}
+  {/* Update by AI button - show when reviewer comment exists (even if DRAFT), otherwise Fill by AI */}
   
-{!isLocked && (fixRejected || isReviseMode) ? (
+{!isLocked && (fixRejected || isReviseMode || (reviewerComment && reviewerComment.trim())) ? (
   <button
     type="button"
     onClick={handleUpdateByAI}
-    disabled={aiLoading}
+    disabled={aiLoading || !reviewerComment || !reviewerComment.trim()}
     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-500 text-white text-sm font-semibold shadow-lg hover:shadow-xl transition disabled:opacity-60"
   >
     <SparklesIcon className="h-5 w-5" />

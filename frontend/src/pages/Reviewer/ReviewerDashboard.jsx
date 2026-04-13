@@ -7,12 +7,14 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
 } from "@heroicons/react/24/solid";
-import { fetchReviewerNewSyllabuses } from "../../api/api";
+import { fetchReviewerNewSyllabuses, fetchReviewerEditedSyllabuses } from "../../api/api";
 
 export default function ReviewerDashboard() {
   const navigate = useNavigate();
   const [pendingCount, setPendingCount] = useState(0);
   const [loadingCount, setLoadingCount] = useState(false);
+  const [editedPendingCount, setEditedPendingCount] = useState(0);
+  const [loadingEditedCount, setLoadingEditedCount] = useState(false);
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
@@ -33,6 +35,18 @@ export default function ReviewerDashboard() {
       })
       .catch(() => setPendingCount(0))
       .finally(() => setLoadingCount(false));
+
+    // Fetch edited syllabuses count
+    setLoadingEditedCount(true);
+    fetchReviewerEditedSyllabuses({ reviewerId: user.id, departmentId: deptId })
+      .then((data) => {
+        const arr = Array.isArray(data) ? data : data?.results || [];
+        // Count only PENDING_REVIEW status
+        const pending = arr.filter(item => item.status === "PENDING_REVIEW").length;
+        setEditedPendingCount(pending);
+      })
+      .catch(() => setEditedPendingCount(0))
+      .finally(() => setLoadingEditedCount(false));
   }, []);
 
   return (
@@ -121,11 +135,23 @@ export default function ReviewerDashboard() {
                 <PencilSquareIcon className="h-6 w-6 text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-base md:text-lg font-semibold text-slate-900">
-                  Edited Syllabuses
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base md:text-lg font-semibold text-slate-900">
+                    Edited Syllabuses
+                  </h2>
+                  {!loadingEditedCount && editedPendingCount > 0 && (
+                    <span className="inline-flex items-center justify-center h-6 px-2 rounded-full bg-emerald-600 text-white text-xs font-bold">
+                      {editedPendingCount}
+                    </span>
+                  )}
+                </div>
                 <p className="mt-1 text-xs text-slate-500 max-w-xs">
                   Review updated versions of existing syllabuses that need rechecking.
+                  {!loadingEditedCount && editedPendingCount > 0 && (
+                    <span className="block mt-1 font-semibold text-emerald-600">
+                      {editedPendingCount} {editedPendingCount === 1 ? 'syllabus' : 'syllabuses'} waiting for review
+                    </span>
+                  )}
                 </p>
               </div>
             </div>

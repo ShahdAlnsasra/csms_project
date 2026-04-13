@@ -379,6 +379,7 @@ class SyllabusSerializer(serializers.ModelSerializer):
             
         elif save_as == "DRAFT":
             instance.status = "DRAFT"
+            # ✅ Don't clear reviewer_comment when saving as DRAFT - preserve it for reference
             instance.save(update_fields=["status"])
         return instance
 

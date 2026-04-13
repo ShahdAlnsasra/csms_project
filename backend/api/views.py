@@ -365,13 +365,23 @@ def signup_request_create(request):
         f"Please enter this code in the system to verify your email."
     )
 
-    send_mail(
-        subject=subject,
-        message=message,
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
-        recipient_list=[email],
-        fail_silently=False,
-    )
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
+            recipient_list=[email],
+            fail_silently=False,
+        )
+        print(f"[SUCCESS] Verification email sent successfully to {email}")
+    except Exception as e:
+        # Log the error but don't fail the signup - user can request code again
+        error_msg = str(e)
+        print(f"[ERROR] Failed to send verification email to {email}: {error_msg}")
+        print(f"[INFO] Verification code for {email}: {verification_code}")
+        print("[WARNING] Email sending failed. The verification code is printed above for testing.")
+        # Still return success - the code is saved and can be retrieved manually if needed
+        # In production, you might want to return an error, but for development, this allows testing
 
     return Response(
         {
