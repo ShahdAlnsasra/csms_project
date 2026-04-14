@@ -102,6 +102,7 @@ from rest_framework import status
 from django.core.mail import send_mail
 from django.conf import settings
 import random
+from datetime import timedelta
 
 from .models import Department, SignupRequest, MagicLink, User
 
@@ -235,7 +236,53 @@ def signup_request_create(request):
         )
 
     # ---------- Email uniqueness ----------
-    if User.objects.filter(email=email).exists() or SignupRequest.objects.filter(email=email).exists():
+    if User.objects.filter(email=email).exists():
+        return Response(
+            {"detail": "An account with this email already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    existing_signup = SignupRequest.objects.filter(email=email).first()
+    if existing_signup:
+        # If pending and unverified, resend a fresh code instead of blocking signup retry.
+        if existing_signup.status == "PENDING" and not existing_signup.email_verified:
+            new_code = f"{random.randint(0, 999999):06d}"
+            existing_signup.set_new_verification_code(new_code)
+            existing_signup.save(
+                update_fields=["email_verification_code", "email_verification_expires_at", "email_verified"]
+            )
+
+            subject = "Verify your email for CSMS"
+            message = (
+                f"Hi {existing_signup.first_name},\n\n"
+                f"Your verification code is: {new_code}\n\n"
+                f"This code will expire in 30 minutes."
+            )
+            try:
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+            except Exception:
+                return Response(
+                    {"detail": "Failed to resend verification code. Please try again later."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "id": existing_signup.id,
+                    "status": existing_signup.status,
+                    "email": existing_signup.email,
+                    "email_verified": existing_signup.email_verified,
+                    "detail": "A signup request already exists. We sent you a new verification code.",
+                },
+                status=status.HTTP_200_OK,
+            )
+
         return Response(
             {"detail": "An account or signup request with this email already exists."},
             status=status.HTTP_400_BAD_REQUEST,
@@ -321,8 +368,9 @@ def signup_request_create(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    # generate 6-digit verification code
+    # generate 6-digit verification code with 30-minute expiry
     verification_code = f"{random.randint(0, 999999):06d}"
+    verification_expires_at = timezone.now() + timedelta(minutes=30)
 
     signup = SignupRequest(
         email=email,
@@ -333,6 +381,7 @@ def signup_request_create(request):
         role=role,
         department=dept_obj,
         email_verification_code=verification_code,
+        email_verification_expires_at=verification_expires_at,
         email_verified=False,
     )
 
@@ -362,6 +411,7 @@ def signup_request_create(request):
         f"Hi {first_name},\n\n"
         f"Thank you for signing up to CSMS.\n"
         f"Your verification code is: {verification_code}\n\n"
+        f"This code will expire in 30 minutes.\n\n"
         f"Please enter this code in the system to verify your email."
     )
 
@@ -389,6 +439,7 @@ def signup_request_create(request):
             "status": signup.status,     # PENDING
             "email": signup.email,
             "email_verified": signup.email_verified,
+            "detail": "Verification code sent. Please verify your email to continue.",
         },
         status=status.HTTP_201_CREATED,
     )
@@ -403,8 +454,8 @@ def verify_signup_email(request):
       "code": "123456"
     }
     """
-    email = request.data.get("email")
-    code = request.data.get("code")
+    email = (request.data.get("email") or "").strip().lower()
+    code = (request.data.get("code") or "").strip()
 
     if not email or not code:
         return Response(
@@ -432,6 +483,12 @@ def verify_signup_email(request):
             status=status.HTTP_200_OK,
         )
 
+    if signup.email_verification_expires_at and signup.email_verification_expires_at < timezone.now():
+        return Response(
+            {"detail": "Verification code has expired."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if signup.email_verification_code != code:
         return Response(
             {"detail": "Invalid verification code."},
@@ -439,10 +496,80 @@ def verify_signup_email(request):
         )
 
     signup.email_verified = True
-    signup.save(update_fields=["email_verified"])
+    signup.email_verification_code = None
+    signup.email_verification_expires_at = None
+    signup.save(update_fields=["email_verified", "email_verification_code", "email_verification_expires_at"])
 
     return Response(
         {"detail": "Email verified successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+def resend_signup_verification_code(request):
+    """
+    POST /api/signup/resend-verification-code/
+    {
+      "email": "..."
+    }
+    """
+    email = (request.data.get("email") or "").strip().lower()
+    if not email:
+        return Response(
+            {"detail": "Email is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        signup = SignupRequest.objects.get(email=email)
+    except SignupRequest.DoesNotExist:
+        return Response(
+            {"detail": "Signup request not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if signup.status == "REJECTED":
+        return Response(
+            {"detail": "This signup request was rejected and cannot be verified."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if signup.email_verified:
+        return Response(
+            {"detail": "Email already verified."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    new_code = f"{random.randint(0, 999999):06d}"
+    signup.set_new_verification_code(new_code)
+    signup.save(
+        update_fields=["email_verification_code", "email_verification_expires_at", "email_verified"]
+    )
+
+    subject = "Your new CSMS verification code"
+    message = (
+        f"Hi {signup.first_name},\n\n"
+        f"Your new verification code is: {new_code}\n\n"
+        f"This code will expire in 30 minutes."
+    )
+
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
+            recipient_list=[signup.email],
+            fail_silently=False,
+        )
+    except Exception:
+        return Response(
+            {"detail": "Failed to resend verification code. Please try again later."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    return Response(
+        {"detail": "A new verification code was sent to your email."},
         status=status.HTTP_200_OK,
     )
 
@@ -547,7 +674,10 @@ class AdminSignupRequestList(APIView):
     permission_classes = [AllowAny]  # בהמשך אפשר IsAdminUser
 
     def get(self, request):
-        qs = SignupRequest.objects.filter(role="DEPARTMENT_ADMIN")
+        qs = SignupRequest.objects.filter(
+            role="DEPARTMENT_ADMIN",
+            email_verified=True,
+        )
 
         status_param = request.query_params.get("status")
         search = request.query_params.get("search")
@@ -591,7 +721,8 @@ class DepartmentAdminSignupRequestList(APIView):
             )
 
         qs = SignupRequest.objects.filter(
-            department_id=dept_id_int
+            department_id=dept_id_int,
+            email_verified=True,
         ).exclude(role="DEPARTMENT_ADMIN")
 
         status_param = request.query_params.get("status")
@@ -643,7 +774,8 @@ class DepartmentAdminRequestsView(APIView):
             )
 
         qs = SignupRequest.objects.filter(
-            department_id=dept_id
+            department_id=dept_id,
+            email_verified=True,
         ).exclude(role="DEPARTMENT_ADMIN")
 
         if status_param:

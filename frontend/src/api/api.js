@@ -107,6 +107,11 @@ export async function verifySignupEmail(email, code) {
   return res.data;
 }
 
+export async function resendSignupVerificationCode(email) {
+  const res = await API.post("signup/resend-verification-code/", { email });
+  return res.data;
+}
+
 export async function activateAccount(token, password, username) {
   const res = await API.post(`activate/${token}/`, { password, username });
   return res.data;

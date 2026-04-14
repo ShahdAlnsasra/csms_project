@@ -32,6 +32,11 @@ urlpatterns = [
     path("", include(router.urls)),
     path("signup/", views.signup_request_create, name="signup"),
     path("signup/verify-email/", views.verify_signup_email, name="signup-verify-email"),
+    path(
+        "signup/resend-verification-code/",
+        views.resend_signup_verification_code,
+        name="signup-resend-verification-code",
+    ),
     path("login/", views.login_view, name="login"),
     path("roles/", views.get_roles, name="roles"),
     path("departments/", DepartmentList.as_view(), name="department-list"),

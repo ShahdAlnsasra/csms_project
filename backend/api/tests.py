@@ -363,6 +363,94 @@ class SignupAPITest(TestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_verify_fails_when_code_expired(self):
+        """Verification should fail for expired code"""
+        signup = SignupRequest.objects.create(
+            email="expired@test.com",
+            phone="1234567890",
+            first_name="Expired",
+            last_name="User",
+            role="LECTURER",
+            department=self.dept,
+            id_number="123456789",
+            email_verification_code="111111",
+            email_verification_expires_at=timezone.now() - timedelta(minutes=1),
+            email_verified=False,
+        )
+
+        response = self.client.post('/api/signup/verify-email/', {
+            "email": signup.email,
+            "code": "111111",
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get("detail"), "Verification code has expired.")
+
+    def test_resend_rotates_code_and_old_code_invalid(self):
+        """Resend should invalidate old code and allow only new code"""
+        signup = SignupRequest.objects.create(
+            email="resend@test.com",
+            phone="1234567891",
+            first_name="Resend",
+            last_name="User",
+            role="LECTURER",
+            department=self.dept,
+            id_number="123456788",
+            email_verification_code="111111",
+            email_verification_expires_at=timezone.now() + timedelta(minutes=30),
+            email_verified=False,
+        )
+
+        import unittest.mock
+        with unittest.mock.patch('api.views.send_mail') as mock_send:
+            mock_send.return_value = True
+            resend_response = self.client.post('/api/signup/resend-verification-code/', {
+                "email": signup.email,
+            })
+
+        self.assertEqual(resend_response.status_code, status.HTTP_200_OK)
+        signup.refresh_from_db()
+        self.assertNotEqual(signup.email_verification_code, "111111")
+        self.assertIsNotNone(signup.email_verification_expires_at)
+
+        old_code_response = self.client.post('/api/signup/verify-email/', {
+            "email": signup.email,
+            "code": "111111",
+        })
+        self.assertEqual(old_code_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(old_code_response.data.get("detail"), "Invalid verification code.")
+
+    def test_signup_retry_for_existing_unverified_email_resends_code(self):
+        """Retrying signup with same unverified email should resend code, not fail"""
+        SignupRequest.objects.create(
+            email="retry@test.com",
+            phone="1234567800",
+            first_name="Retry",
+            last_name="User",
+            role="LECTURER",
+            department=self.dept,
+            id_number="123456700",
+            email_verification_code="222222",
+            email_verification_expires_at=timezone.now() + timedelta(minutes=30),
+            email_verified=False,
+        )
+
+        import unittest.mock
+        with unittest.mock.patch('api.views.send_mail') as mock_send:
+            mock_send.return_value = True
+            response = self.client.post('/api/signup/', {
+                'first_name': 'Retry',
+                'last_name': 'User',
+                'email': 'retry@test.com',
+                'phone': '1234567800',
+                'role': 'LECTURER',
+                'department': self.dept.id,
+                'id_number': '123456700'
+            })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("detail", response.data)
+
 
 class ValidationTest(TestCase):
     """Test input validation and error handling"""

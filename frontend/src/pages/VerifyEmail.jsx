@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { verifySignupEmail } from "../api/api";
+import { verifySignupEmail, resendSignupVerificationCode } from "../api/api";
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -12,7 +12,8 @@ export default function VerifyEmail() {
 
   const [email, setEmail] = useState(emailFromUrl);
   const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -20,7 +21,7 @@ export default function VerifyEmail() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    setLoading(true);
+    setVerifyLoading(true);
 
     try {
       const res = await verifySignupEmail(email.trim(), code.trim());
@@ -33,12 +34,28 @@ export default function VerifyEmail() {
       }, 1500);
     } catch (err) {
       console.error("Verify email failed:", err);
-      const msg =
-        err.response?.data?.detail ||
-        "Verification failed. Please check the code and try again.";
+      const msg = err.response?.data?.detail || "Verification failed.";
       setError(msg);
     } finally {
-      setLoading(false);
+      setVerifyLoading(false);
+    }
+  }
+
+  async function handleResendCode() {
+    setError("");
+    setSuccess("");
+    setResendLoading(true);
+
+    try {
+      const res = await resendSignupVerificationCode(email.trim());
+      setSuccess(res.detail || "A new verification code was sent to your email.");
+    } catch (err) {
+      const msg =
+        err.response?.data?.detail ||
+        "Failed to resend verification code. Please try again.";
+      setError(msg);
+    } finally {
+      setResendLoading(false);
     }
   }
 
@@ -98,7 +115,7 @@ export default function VerifyEmail() {
           </h1>
           <p className="mt-3 text-slate-700 leading-relaxed text-sm md:text-base">
             We&apos;ve sent a 6-digit code to your email. Enter it below to
-            verify your address and continue to login.
+            verify your address. The code expires in 30 minutes.
           </p>
 
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -142,10 +159,19 @@ export default function VerifyEmail() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={verifyLoading}
               className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold shadow-lg shadow-indigo-200 transition"
             >
-              {loading ? "Verifying..." : "Verify email"}
+              {verifyLoading ? "Verifying..." : "Verify email"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={resendLoading || verifyLoading}
+              className="w-full py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-60 disabled:cursor-not-allowed font-semibold transition"
+            >
+              {resendLoading ? "Resending..." : "Resend verification code"}
             </button>
 
             <p className="text-xs text-slate-500 text-center mt-2">

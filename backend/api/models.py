@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 import uuid
 from django.conf import settings
 from django.utils import timezone
+from datetime import timedelta
 from django.core.validators import RegexValidator
 
 
@@ -339,6 +340,7 @@ class SignupRequest(models.Model):
 
       # ✅ NEW: email verification fields
     email_verification_code = models.CharField(max_length=10, null=True, blank=True)
+    email_verification_expires_at = models.DateTimeField(null=True, blank=True)
     email_verified = models.BooleanField(default=False)
 
     # NEW – to avoid sending multiple emails when status is edited
@@ -346,6 +348,11 @@ class SignupRequest(models.Model):
 
     def __str__(self):
         return f"Signup: {self.email} ({self.role})"
+
+    def set_new_verification_code(self, code):
+        self.email_verification_code = code
+        self.email_verification_expires_at = timezone.now() + timedelta(minutes=30)
+        self.email_verified = False
 
 # -------------------------------
 #   MagicLink (קישור חד-פעמי)
