@@ -346,6 +346,7 @@ import {
   fetchDeptCourses,
   fetchDepartmentDetail,
   fetchCourseAIInsights,
+  downloadDeptCourseSyllabusPdf,
 } from "../../api/api";
 import {
   ArrowLeft,
@@ -354,6 +355,7 @@ import {
   Link2,
   ArrowRightLeft,
   Sparkles,
+  Download,
 } from "lucide-react";
 
 export default function DepartmentAdminCourseDetail() {
@@ -539,6 +541,17 @@ export default function DepartmentAdminCourseDetail() {
     }
   };
 
+  const handleDownloadSyllabus = async () => {
+    if (!course?.id) return;
+    try {
+      await downloadDeptCourseSyllabusPdf(course.id, course.name);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.detail || "Could not download syllabus PDF yet.";
+      alert(msg);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top bar */}
@@ -562,13 +575,23 @@ export default function DepartmentAdminCourseDetail() {
           </div>
         </div>
 
-        {department && (
-          <div className="px-4 py-2 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-800">
-            <span className="font-semibold">
-              {department.code} · {department.name}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadSyllabus}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold shadow-sm hover:bg-indigo-500"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download syllabus
+          </button>
+          {department && (
+            <div className="px-4 py-2 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-800">
+              <span className="font-semibold">
+                {department.code} · {department.name}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Layout */}

@@ -93,7 +93,7 @@ export function SystemAdminNavbar() {
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-4 md:py-5">
         {/* לוגו + כותרת */}
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-[10px] font-bold text-white shadow-lg">
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shadow-lg">
             CSMS
           </div>
           <div className="text-base font-bold text-slate-800 hidden sm:block">

@@ -3,6 +3,7 @@ import React from "react";
 import { SystemAdminNavbar } from "./SystemAdminLayout";
 import { DepartmentAdminNavbar } from "./DepartmentAdminLayout";
 import { LecturerNavbar } from "./LecturerLayout";
+import { StudentNavbar } from "./StudentLayout";
 
 // Navbar פשוט לכל מי שלא System Admin / לא מחובר
 function PublicNavbar() {
@@ -39,6 +40,9 @@ export default function RoleAwareNavbar() {
   }
   if (role === "LECTURER") {
     return <LecturerNavbar />;
+  }
+  if (role === "STUDENT") {
+    return <StudentNavbar />;
   }
 
   return <PublicNavbar />;

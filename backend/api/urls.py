@@ -28,6 +28,33 @@ from .views import (
 from django.urls import path
 from .views import ai_syllabus_draft
 from .views import syllabus_chat
+from .student_views import (
+    StudentCourseAIInsightsView,
+    student_course_detail,
+    student_course_syllabus_pdf,
+    student_department_courses,
+    student_my_courses,
+    student_my_department,
+    student_notifications,
+    student_notification_detail,
+    student_notification_mark_read,
+    student_notification_unread_count,
+)
+from .role_notifications import (
+    lecturer_notifications,
+    lecturer_notification_detail,
+    lecturer_notification_mark_read,
+    lecturer_notification_unread_count,
+    reviewer_notifications,
+    reviewer_notification_detail,
+    reviewer_notification_mark_read,
+    reviewer_notification_unread_count,
+)
+from .pdf_views import (
+    department_admin_course_syllabus_pdf,
+    lecturer_syllabus_pdf,
+    system_admin_course_syllabus_pdf,
+)
 urlpatterns = [
     path("", include(router.urls)),
     path("signup/", views.signup_request_create, name="signup"),
@@ -43,6 +70,8 @@ urlpatterns = [
     path("departments/<int:dept_id>/years/", views.get_years_for_department, name="dept-years"),
     path("semesters/", views.get_semesters, name="semesters"),
     path("activate/<uuid:token>/", views.activate_with_magic_link, name="activate"),
+    path("forgot-password/", views.forgot_password_request, name="forgot-password"),
+    path("reset-password/<uuid:token>/", views.reset_password_with_magic_link, name="reset-password"),
     # Lecturer
     path("lecturer/courses/", lecturer_courses, name="lecturer-courses"),
     path("lecturer/syllabuses/", lecturer_syllabuses, name="lecturer-syllabuses"),
@@ -99,6 +128,11 @@ urlpatterns = [
     path("history/years/", views.get_history_years),
     path("history/courses/", views.get_history_courses),
     path("lecturer/syllabuses/<int:syllabus_id>/", views.lecturer_syllabus_detail),
+    path(
+        "lecturer/syllabuses/<int:syllabus_id>/download-pdf/",
+        lecturer_syllabus_pdf,
+        name="lecturer-syllabus-pdf",
+    ),
     path("lecturer/syllabuses/<int:syllabus_id>/clone/", views.clone_lecturer_syllabus),
     path("ai/syllabus-draft/", ai_syllabus_draft),
     path("ai/syllabus-chat/", syllabus_chat),
@@ -115,7 +149,80 @@ urlpatterns = [
     path("reviewer/syllabuses/<int:syllabus_id>/compare-ai/", views.reviewer_compare_versions, name="reviewer-compare-versions"),
     path("reviewer/syllabuses/<int:syllabus_id>/approve/", views.reviewer_approve_syllabus, name="reviewer-approve"),
     path("reviewer/syllabuses/<int:syllabus_id>/reject/", views.reviewer_reject_syllabus, name="reviewer-reject"),
+    path("reviewer/notifications/", reviewer_notifications, name="reviewer-notifications"),
+    path(
+        "reviewer/notifications/unread-count/",
+        reviewer_notification_unread_count,
+        name="reviewer-notifications-unread",
+    ),
+    path(
+        "reviewer/notifications/<int:notification_id>/",
+        reviewer_notification_detail,
+        name="reviewer-notification-detail",
+    ),
+    path(
+        "reviewer/notifications/<int:notification_id>/read/",
+        reviewer_notification_mark_read,
+        name="reviewer-notification-read",
+    ),
 
+    # ====== STUDENT API ======
+    path("student/my-courses/", student_my_courses, name="student-my-courses"),
+    path("student/my-department/", student_my_department, name="student-my-department"),
+    path("student/department-courses/", student_department_courses, name="student-dept-courses"),
+    path("student/courses/<int:course_id>/", student_course_detail, name="student-course-detail"),
+    path(
+        "student/courses/<int:course_id>/syllabus-pdf/",
+        student_course_syllabus_pdf,
+        name="student-syllabus-pdf",
+    ),
+    path(
+        "student/courses/<int:pk>/ai-insights/",
+        StudentCourseAIInsightsView.as_view(),
+        name="student-course-ai-insights",
+    ),
+    path("student/notifications/", student_notifications, name="student-notifications"),
+    path(
+        "student/notifications/unread-count/",
+        student_notification_unread_count,
+        name="student-notifications-unread",
+    ),
+    path(
+        "student/notifications/<int:notification_id>/",
+        student_notification_detail,
+        name="student-notification-detail",
+    ),
+    path(
+        "student/notifications/<int:notification_id>/read/",
+        student_notification_mark_read,
+        name="student-notification-read",
+    ),
+    path(
+        "department-admin/courses/<int:course_id>/syllabus-pdf/",
+        department_admin_course_syllabus_pdf,
+        name="department-admin-syllabus-pdf",
+    ),
+    path(
+        "admin/courses/<int:course_id>/syllabus-pdf/",
+        system_admin_course_syllabus_pdf,
+        name="admin-syllabus-pdf",
+    ),
+    path("lecturer/notifications/", lecturer_notifications, name="lecturer-notifications"),
+    path(
+        "lecturer/notifications/unread-count/",
+        lecturer_notification_unread_count,
+        name="lecturer-notifications-unread",
+    ),
+    path(
+        "lecturer/notifications/<int:notification_id>/",
+        lecturer_notification_detail,
+        name="lecturer-notification-detail",
+    ),
+    path(
+        "lecturer/notifications/<int:notification_id>/read/",
+        lecturer_notification_mark_read,
+        name="lecturer-notification-read",
+    ),
     
 ]
 

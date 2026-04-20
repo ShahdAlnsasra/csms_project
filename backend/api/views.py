@@ -28,6 +28,7 @@ from .serializers import SyllabusSerializer
 from .serializers import DepartmentSerializer
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .serializers import SyllabusSerializer
 
@@ -103,6 +104,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 import random
 from datetime import timedelta
+from uuid import uuid4
 
 from .models import Department, SignupRequest, MagicLink, User
 
@@ -164,6 +166,9 @@ def login_view(request):
             "status": user.status,
             "department": user.department_id,
             "department_name": user.department.name if user.department else None,
+            "study_year": user.study_year,
+            "student_semester": user.student_semester,
+            "major": user.major or "",
         },
         status=status.HTTP_200_OK,
     )
@@ -185,6 +190,9 @@ def signup_request_create(request):
     study_year = data.get("study_year")
     semester = data.get("semester")
     id_number = (data.get("id_number") or "").strip()
+    major = (data.get("major") or "").strip()
+    password = (data.get("password") or "").strip()
+    password_confirm = (data.get("password_confirm") or "").strip()
 
  # ---------- Required fields: report exactly what's missing ----------
     missing = []
@@ -372,6 +380,8 @@ def signup_request_create(request):
     verification_code = f"{random.randint(0, 999999):06d}"
     verification_expires_at = timezone.now() + timedelta(minutes=30)
 
+    signup_password_hash = ""
+
     signup = SignupRequest(
         email=email,
         phone=phone,
@@ -380,6 +390,8 @@ def signup_request_create(request):
         id_number=id_number,
         role=role,
         department=dept_obj,
+        major="",
+        signup_password_hash=signup_password_hash or "",
         email_verification_code=verification_code,
         email_verification_expires_at=verification_expires_at,
         email_verified=False,
@@ -401,7 +413,13 @@ def signup_request_create(request):
                 {"detail": "study_year must be a number."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        signup.student_semester = str(semester)
+        sem_str = str(semester)
+        if sem_str not in {"A", "B", "SUMMER"}:
+            return Response(
+                {"detail": "semester must be one of: A, B, SUMMER."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        signup.student_semester = sem_str
 
     signup.save()
 
@@ -634,6 +652,17 @@ def activate_with_magic_link(request, token):
 
     user = magic.user
 
+    try:
+        signup_req = SignupRequest.objects.get(email=user.email)
+    except SignupRequest.DoesNotExist:
+        signup_req = None
+    if signup_req and signup_req.signup_password_hash:
+        if not check_password(password, signup_req.signup_password_hash):
+            return Response(
+                {"detail": "Password must match the password you set during signup."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     # 5) Strong password validation (uses Django's password validators)
     try:
         validate_password(password, user=user)
@@ -655,8 +684,138 @@ def activate_with_magic_link(request, token):
     magic.is_used = True
     magic.save(update_fields=["is_used"])
 
+    if signup_req and signup_req.signup_password_hash:
+        signup_req.signup_password_hash = ""
+        signup_req.save(update_fields=["signup_password_hash"])
+
     return Response(
         {"detail": "Account activated successfully. You can now log in."},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def forgot_password_request(request):
+    """
+    POST /api/forgot-password/
+    Body: { "email": "user@example.com" }
+    Sends a one-time password reset link to the email if the account exists.
+    """
+    email = (request.data.get("email") or "").strip().lower()
+    if not email:
+        return Response(
+            {"detail": "Email is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        validate_email(email)
+    except ValidationError:
+        return Response(
+            {"detail": "Invalid email format."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.filter(email=email).first()
+    if user:
+        magic, _ = MagicLink.objects.get_or_create(user=user)
+        magic.token = uuid4()
+        magic.is_used = False
+        magic.expires_at = timezone.now() + timedelta(hours=1)
+        magic.save(update_fields=["token", "is_used", "expires_at"])
+
+        frontend_base = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+        reset_url = f"{frontend_base}/reset-password/{magic.token}/"
+
+        subject = "Reset your CSMS password"
+        message = (
+            f"Hi {user.first_name or 'there'},\n\n"
+            "We received a request to reset your CSMS password.\n\n"
+            "Use the secure link below to set a new password:\n"
+            f"{reset_url}\n\n"
+            "This link expires in 1 hour and can be used only once.\n"
+            "If you did not request this reset, please ignore this email."
+        )
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER),
+                recipient_list=[email],
+                fail_silently=False,
+            )
+        except Exception:
+            return Response(
+                {"detail": "Failed to send reset email. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    # Keep response generic to avoid exposing whether the email exists.
+    return Response(
+        {
+            "detail": (
+                "If an account with this email exists, a password reset link has been sent."
+            )
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def reset_password_with_magic_link(request, token):
+    """
+    POST /api/reset-password/<token>/
+    Body: { "password": "...", "password_confirm": "..." }
+    """
+    password = request.data.get("password")
+    password_confirm = request.data.get("password_confirm")
+
+    if not password:
+        return Response(
+            {"detail": "Password is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if password_confirm is not None and password != password_confirm:
+        return Response(
+            {"detail": "Passwords do not match."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        magic = MagicLink.objects.get(token=token, is_used=False)
+    except MagicLink.DoesNotExist:
+        return Response(
+            {"detail": "Invalid or already used reset link."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if magic.expires_at and magic.expires_at < timezone.now():
+        return Response(
+            {"detail": "This reset link has expired."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = magic.user
+
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as e:
+        return Response(
+            {"detail": e.messages},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user.set_password(password)
+    user.save(update_fields=["password"])
+
+    magic.is_used = True
+    magic.save(update_fields=["is_used"])
+
+    return Response(
+        {"detail": "Password reset successfully. You can now log in."},
         status=status.HTTP_200_OK,
     )
 
@@ -1032,6 +1191,9 @@ class DepartmentAdminRequestDecision(APIView):
                 id_number=signup.id_number,
                 role=signup.role,               # STUDENT / LECTURER / REVIEWER
                 department=signup.department,   # same department
+                study_year=signup.study_year if signup.role == "STUDENT" else None,
+                student_semester=signup.student_semester if signup.role == "STUDENT" else None,
+                major=(signup.major or "") if signup.role == "STUDENT" else "",
                 status="APPROVED",
             )
 
@@ -1863,6 +2025,8 @@ def create_lecturer_syllabus(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    from .models import Notification
+
     lecturer = User.objects.filter(id=lecturer_id, role="LECTURER").first()
     if not lecturer:
         return Response({"detail": "Lecturer not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -1909,6 +2073,34 @@ def create_lecturer_syllabus(request):
             obj.status = "PENDING_REVIEW"
             obj.reviewer_comment = ""
             obj.save(update_fields=["status", "reviewer_comment"])
+            has_rejected_history = base_qs.filter(status="REJECTED").exists()
+            has_approved_history = base_qs.filter(status="APPROVED").exists()
+            reviewers = User.objects.filter(
+                role="REVIEWER",
+                status="APPROVED",
+                department_id=course.department_id,
+            )
+            for reviewer in reviewers.iterator():
+                if has_rejected_history:
+                    notif_title = f"Syllabus resubmitted: {course.code}"
+                    notif_body_suffix = " resubmitted a syllabus after reviewer feedback."
+                    notif_type = "LECTURER_RESUBMITTED"
+                elif has_approved_history:
+                    notif_title = f"Syllabus updated: {course.code}"
+                    notif_body_suffix = " submitted an updated syllabus for review."
+                    notif_type = "LECTURER_UPDATED"
+                else:
+                    notif_title = f"New syllabus submitted: {course.code}"
+                    notif_body_suffix = " submitted a syllabus for review."
+                    notif_type = "LECTURER_SUBMITTED"
+                Notification.objects.create(
+                    recipient=reviewer,
+                    title=notif_title,
+                    body=f"{lecturer.first_name} {lecturer.last_name}".strip() + notif_body_suffix,
+                    notification_type=notif_type,
+                    sender=lecturer,
+                    course=course,
+                )
 
         return Response(SyllabusSerializer(obj).data, status=status.HTTP_200_OK)
 
@@ -1970,6 +2162,36 @@ def create_lecturer_syllabus(request):
             )
             for a in assessments
         ])
+
+    if new_status == "PENDING_REVIEW":
+        has_rejected_history = base_qs.filter(status="REJECTED").exists()
+        has_approved_history = base_qs.filter(status="APPROVED").exists()
+        reviewers = User.objects.filter(
+            role="REVIEWER",
+            status="APPROVED",
+            department_id=course.department_id,
+        )
+        for reviewer in reviewers.iterator():
+            if has_rejected_history:
+                notif_title = f"Syllabus resubmitted: {course.code}"
+                notif_body_suffix = " resubmitted a syllabus after reviewer feedback."
+                notif_type = "LECTURER_RESUBMITTED"
+            elif has_approved_history:
+                notif_title = f"Syllabus updated: {course.code}"
+                notif_body_suffix = " submitted an updated syllabus for review."
+                notif_type = "LECTURER_UPDATED"
+            else:
+                notif_title = f"New syllabus submitted: {course.code}"
+                notif_body_suffix = " submitted a syllabus for review."
+                notif_type = "LECTURER_SUBMITTED"
+            Notification.objects.create(
+                recipient=reviewer,
+                title=notif_title,
+                body=f"{lecturer.first_name} {lecturer.last_name}".strip() + notif_body_suffix,
+                notification_type=notif_type,
+                sender=lecturer,
+                course=course,
+            )
 
     return Response(SyllabusSerializer(syllabus).data, status=status.HTTP_201_CREATED)
 
@@ -2094,8 +2316,52 @@ def lecturer_syllabus_detail(request, syllabus_id):
     )
 
     if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
+        previous_status = syllabus.status
+        updated = serializer.save()
+
+        # On DRAFT -> SUBMIT transition (to PENDING_REVIEW), notify reviewers.
+        if save_as == "SUBMIT" and previous_status == "DRAFT" and updated.status == "PENDING_REVIEW":
+            from .models import Notification
+
+            base_qs = Syllabus.objects.filter(
+                course=updated.course,
+                uploaded_by=updated.uploaded_by,
+                academic_year=updated.academic_year,
+            ).exclude(id=updated.id)
+
+            has_rejected_history = base_qs.filter(status="REJECTED").exists()
+            has_approved_history = base_qs.filter(status="APPROVED").exists()
+            reviewers = User.objects.filter(
+                role="REVIEWER",
+                status="APPROVED",
+                department_id=updated.course.department_id,
+            )
+
+            for reviewer in reviewers.iterator():
+                if has_rejected_history:
+                    notif_title = f"Syllabus resubmitted: {updated.course.code}"
+                    notif_body_suffix = " resubmitted a syllabus after reviewer feedback."
+                    notif_type = "LECTURER_RESUBMITTED"
+                elif has_approved_history:
+                    notif_title = f"Syllabus updated: {updated.course.code}"
+                    notif_body_suffix = " submitted an updated syllabus for review."
+                    notif_type = "LECTURER_UPDATED"
+                else:
+                    notif_title = f"New syllabus submitted: {updated.course.code}"
+                    notif_body_suffix = " submitted a syllabus for review."
+                    notif_type = "LECTURER_SUBMITTED"
+
+                Notification.objects.create(
+                    recipient=reviewer,
+                    title=notif_title,
+                    body=f"{updated.uploaded_by.first_name} {updated.uploaded_by.last_name}".strip()
+                    + notif_body_suffix,
+                    notification_type=notif_type,
+                    sender=updated.uploaded_by,
+                    course=updated.course,
+                )
+
+        return Response(SyllabusSerializer(updated).data)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -3065,6 +3331,8 @@ def reviewer_approve_syllabus(request, syllabus_id):
     POST /api/reviewer/syllabuses/<id>/approve/
     Approves a syllabus and sends email notification to lecturer.
     """
+    from .models import Notification
+
     reviewer_id = request.data.get("reviewer_id")
     comment = request.data.get("comment", "")
 
@@ -3090,6 +3358,17 @@ def reviewer_approve_syllabus(request, syllabus_id):
 
     # Send email notification to lecturer
     lecturer = syllabus.uploaded_by
+    Notification.objects.create(
+        recipient=lecturer,
+        title=f"Syllabus approved: {syllabus.course.code}",
+        body=(
+            f"Your syllabus for {syllabus.course.name} ({syllabus.course.code}) "
+            f"was approved by reviewer."
+        ),
+        notification_type="REVIEWER_APPROVED",
+        sender=reviewer,
+        course=syllabus.course,
+    )
     try:
         send_mail(
             subject=f"Syllabus Approved: {syllabus.course.name}",
@@ -3114,6 +3393,8 @@ def reviewer_reject_syllabus(request, syllabus_id):
     POST /api/reviewer/syllabuses/<id>/reject/
     Rejects a syllabus with explanation and sends email notification to lecturer.
     """
+    from .models import Notification
+
     reviewer_id = request.data.get("reviewer_id")
     comment = request.data.get("comment", "")
     explanation = request.data.get("explanation", "")
@@ -3143,6 +3424,17 @@ def reviewer_reject_syllabus(request, syllabus_id):
 
     # Send email notification to lecturer
     lecturer = syllabus.uploaded_by
+    Notification.objects.create(
+        recipient=lecturer,
+        title=f"Syllabus rejected: {syllabus.course.code}",
+        body=(
+            f"Your syllabus for {syllabus.course.name} ({syllabus.course.code}) "
+            f"was rejected. Reviewer feedback is available."
+        ),
+        notification_type="REVIEWER_REJECTED",
+        sender=reviewer,
+        course=syllabus.course,
+    )
     try:
         send_mail(
             subject=f"Syllabus Rejected: {syllabus.course.name}",

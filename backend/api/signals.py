@@ -94,6 +94,8 @@ def handle_signup_approval(sender, instance: SignupRequest, created, **kwargs):
         user.department = instance.department
         if instance.role == "STUDENT":
             user.study_year = instance.study_year
+            user.student_semester = instance.student_semester
+            user.major = instance.major or ""
         user.status = "APPROVED"
         user.save()
     except User.DoesNotExist:
@@ -105,6 +107,8 @@ def handle_signup_approval(sender, instance: SignupRequest, created, **kwargs):
             role=instance.role,
             department=instance.department,
             study_year=instance.study_year if instance.role == "STUDENT" else None,
+            student_semester=instance.student_semester if instance.role == "STUDENT" else None,
+            major=(instance.major or "") if instance.role == "STUDENT" else "",
             status="APPROVED",
         )
 
@@ -150,3 +154,54 @@ def handle_signup_approval(sender, instance: SignupRequest, created, **kwargs):
     # 5) Mark email as sent (so this signal won't run again for this request)
     instance.magic_link_sent = True
     instance.save(update_fields=["magic_link_sent"])
+
+
+from django.db.models.signals import pre_save
+
+from .models import Syllabus, Notification
+
+
+@receiver(pre_save, sender=Syllabus)
+def syllabus_store_previous_status(sender, instance, **kwargs):
+    if not instance.pk:
+        instance._prev_status = None
+        return
+    try:
+        old = Syllabus.objects.get(pk=instance.pk)
+        instance._prev_status = old.status
+    except Syllabus.DoesNotExist:
+        instance._prev_status = None
+
+
+@receiver(post_save, sender=Syllabus)
+def notify_students_new_approved_syllabus(sender, instance, created, **kwargs):
+    prev = getattr(instance, "_prev_status", None)
+    if instance.status != "APPROVED":
+        return
+    if prev == "APPROVED":
+        return
+
+    course = instance.course
+    if not course or not course.department_id:
+        return
+
+    students = User.objects.filter(
+        role="STUDENT",
+        status="APPROVED",
+        department_id=course.department_id,
+        study_year=course.year,
+        student_semester=course.semester,
+    )
+    title = f"Syllabus update: {course.code}"
+    body = (
+        f"A syllabus for {course.name} ({course.code}) was approved and is available to review."
+    )
+    for st in students.iterator():
+        Notification.objects.create(
+            recipient=st,
+            title=title,
+            body=body,
+            notification_type="SYLLABUS_APPROVED",
+            sender=instance.uploaded_by,
+            course=course,
+        )

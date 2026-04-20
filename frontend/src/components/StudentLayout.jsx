@@ -3,13 +3,13 @@ import { Outlet, useNavigate, NavLink } from "react-router-dom";
 import { ArrowRightOnRectangleIcon } from "@heroicons/react/24/solid";
 import { Bell } from "lucide-react";
 import {
-  fetchLecturerNotifications,
-  fetchLecturerUnreadCount,
+  fetchStudentNotifications,
+  fetchStudentUnreadCount,
 } from "../api/api";
 
 const AVATAR_KEY = "csmsUserAvatar";
 
-export function LecturerNavbar() {
+export function StudentNavbar() {
   const [user, setUser] = useState(null);
   const [avatar, setAvatar] = useState(null);
   const [bellOpen, setBellOpen] = useState(false);
@@ -27,7 +27,7 @@ export function LecturerNavbar() {
 
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.role !== "LECTURER") {
+      if (parsed.role !== "STUDENT") {
         navigate("/login", { replace: true });
         return;
       }
@@ -47,23 +47,11 @@ export function LecturerNavbar() {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, [navigate]);
 
-  // ✅ UPDATED: confirm before logout
-  const handleLogout = () => {
-    const ok = window.confirm("Are you sure you want to log out?");
-    if (!ok) return;
-
-    localStorage.removeItem("csmsUser");
-    localStorage.removeItem(AVATAR_KEY);
-    localStorage.removeItem("authToken");
-    sessionStorage.setItem("csmsLogoutMessage", "You have successfully logged out.");
-    navigate("/", { replace: true });
-  };
-
   async function refreshNotifications() {
     try {
       const [countRes, listRes] = await Promise.all([
-        fetchLecturerUnreadCount(),
-        fetchLecturerNotifications(),
+        fetchStudentUnreadCount(),
+        fetchStudentNotifications(),
       ]);
       setUnread(countRes?.unread ?? 0);
       setRecent(Array.isArray(listRes) ? listRes.slice(0, 8) : []);
@@ -82,7 +70,10 @@ export function LecturerNavbar() {
 
   useEffect(() => {
     function handleClickOutside(e) {
-      if (bellWrapRef.current && !bellWrapRef.current.contains(e.target)) {
+      if (
+        bellWrapRef.current &&
+        !bellWrapRef.current.contains(e.target)
+      ) {
         setBellOpen(false);
       }
     }
@@ -90,13 +81,22 @@ export function LecturerNavbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleLogout = () => {
+    const ok = window.confirm("Are you sure you want to log out?");
+    if (!ok) return;
+
+    localStorage.removeItem("csmsUser");
+    localStorage.removeItem(AVATAR_KEY);
+    navigate("/login");
+  };
+
   if (!user) return null;
 
   const firstName = user.first_name || "";
   const lastName = user.last_name || "";
-  const fullName = `${firstName} ${lastName}`.trim() || "Lecturer";
+  const fullName = `${firstName} ${lastName}`.trim() || "Student";
   const initials =
-    ((firstName?.[0] || "") + (lastName?.[0] || "")).toUpperCase() || "L";
+    ((firstName?.[0] || "") + (lastName?.[0] || "")).toUpperCase() || "S";
 
   const navClass = ({ isActive }) =>
     `py-3 px-1 border-b-2 -mb-[1px] text-sm font-medium transition duration-150 ${
@@ -108,7 +108,7 @@ export function LecturerNavbar() {
   const ProfileButton = () => (
     <button
       type="button"
-      onClick={() => navigate("/lecturer/profile")}
+      onClick={() => navigate("/student/profile")}
       className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 transition font-semibold text-slate-700 text-sm shadow-sm"
       aria-label="View Profile"
     >
@@ -130,20 +130,20 @@ export function LecturerNavbar() {
   );
 
   return (
-    <header className="border-b border-slate-200 bg-white shadow-sm sticky top-0 z-20">
+    <header className="border-b border-slate-200 bg-white shadow-sm sticky top-0 z-30">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-4 md:py-5">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-600 via-sky-600 to-violet-600 flex items-center justify-center text-[10px] font-bold text-white shadow-lg">
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-600 via-sky-600 to-emerald-600 flex items-center justify-center text-[10px] font-bold text-white shadow-lg">
             CSMS
           </div>
           <div className="text-base font-bold text-slate-800 hidden sm:block">
-            Lecturer Workspace
+            Student Workspace
           </div>
         </div>
 
-        <div className="flex items-center gap-3 md:gap-4">
-          <div className="hidden md:block text-xs text-slate-500">
-            <div className="text-right">Welcome,</div>
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="hidden md:block text-xs text-slate-500 text-right">
+            <div>Welcome,</div>
             <div className="font-semibold text-slate-800 text-sm">{fullName}</div>
           </div>
 
@@ -174,7 +174,7 @@ export function LecturerNavbar() {
                   <button
                     type="button"
                     className="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
-                    onClick={() => navigate("/lecturer/notifications")}
+                    onClick={() => navigate("/student/notifications")}
                   >
                     View all
                   </button>
@@ -182,7 +182,7 @@ export function LecturerNavbar() {
                 <div className="max-h-80 overflow-y-auto">
                   {recent.length === 0 ? (
                     <div className="px-4 py-6 text-sm text-slate-500 text-center">
-                      You're all caught up.
+                      You&apos;re all caught up.
                     </div>
                   ) : (
                     recent.map((n) => (
@@ -191,7 +191,7 @@ export function LecturerNavbar() {
                         type="button"
                         onClick={() => {
                           setBellOpen(false);
-                          navigate(`/lecturer/notifications/${n.id}`);
+                          navigate(`/student/notifications/${n.id}`);
                         }}
                         className={`w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-indigo-50/60 transition ${
                           !n.read_at ? "bg-indigo-50/40" : ""
@@ -201,7 +201,9 @@ export function LecturerNavbar() {
                           {n.title}
                         </p>
                         <p className="text-[11px] text-slate-500 mt-1">
-                          {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
+                          {n.created_at
+                            ? new Date(n.created_at).toLocaleString()
+                            : ""}
                         </p>
                       </button>
                     ))
@@ -225,22 +227,20 @@ export function LecturerNavbar() {
       </div>
 
       <nav className="border-t border-slate-100 bg-white">
-        <div className="max-w-6xl mx-auto flex gap-6 px-4">
-          <NavLink to="/lecturer/dashboard" end className={navClass}>
+        <div className="max-w-6xl mx-auto flex gap-6 px-4 flex-wrap">
+          <NavLink to="/student/dashboard" end className={navClass}>
             Home
           </NavLink>
-          <NavLink to="/lecturer/history" className={navClass}>
-            History
+          <NavLink to="/student/courses" className={navClass}>
+            My Courses
           </NavLink>
-          <NavLink to="/lecturer/courses" className={navClass}>
-            Courses
+          <NavLink to="/student/course-diagram" className={navClass}>
+            Curriculum Diagram
           </NavLink>
-          <NavLink to="/lecturer/notifications" className={navClass}>
+          <NavLink to="/student/notifications" className={navClass}>
             Notifications
           </NavLink>
-
-          {/* ✅ MOVED: Profile at the end of navbar */}
-          <NavLink to="/lecturer/profile" className={navClass}>
+          <NavLink to="/student/profile" className={navClass}>
             Profile
           </NavLink>
         </div>
@@ -249,10 +249,10 @@ export function LecturerNavbar() {
   );
 }
 
-export default function LecturerLayout() {
+export default function StudentLayout() {
   return (
     <div className="bg-[#f8faff] text-slate-900 flex flex-col min-h-screen">
-      <LecturerNavbar />
+      <StudentNavbar />
       <main className="flex-grow max-w-6xl mx-auto px-4 py-8 md:py-10 w-full">
         <Outlet />
       </main>

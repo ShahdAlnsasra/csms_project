@@ -1,13 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, NavLink } from "react-router-dom";
 import { ArrowRightOnRectangleIcon } from "@heroicons/react/24/solid";
+import { Bell } from "lucide-react";
+import {
+  fetchReviewerNotifications,
+  fetchReviewerUnreadCount,
+} from "../api/api";
 
 const AVATAR_KEY = "csmsUserAvatar";
 
 export function ReviewerNavbar() {
   const [user, setUser] = useState(null);
   const [avatar, setAvatar] = useState(null);
+  const [bellOpen, setBellOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [recent, setRecent] = useState([]);
   const navigate = useNavigate();
+  const bellWrapRef = useRef(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("csmsUser");
@@ -48,6 +57,37 @@ export function ReviewerNavbar() {
     sessionStorage.setItem("csmsLogoutMessage", "You have successfully logged out.");
     navigate("/", { replace: true });
   };
+
+  async function refreshNotifications() {
+    try {
+      const [countRes, listRes] = await Promise.all([
+        fetchReviewerUnreadCount(),
+        fetchReviewerNotifications(),
+      ]);
+      setUnread(countRes?.unread ?? 0);
+      setRecent(Array.isArray(listRes) ? listRes.slice(0, 8) : []);
+    } catch {
+      setUnread(0);
+      setRecent([]);
+    }
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    refreshNotifications();
+    const t = setInterval(refreshNotifications, 60000);
+    return () => clearInterval(t);
+  }, [user]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (bellWrapRef.current && !bellWrapRef.current.contains(e.target)) {
+        setBellOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   if (!user) return null;
 
@@ -106,6 +146,70 @@ export function ReviewerNavbar() {
             <div className="font-semibold text-slate-800 text-sm">{fullName}</div>
           </div>
 
+          <div className="relative" ref={bellWrapRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setBellOpen((o) => !o);
+                refreshNotifications();
+              }}
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm hover:bg-slate-50 transition"
+              aria-label="Notifications"
+            >
+              <Bell className="h-5 w-5 text-slate-700" />
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-[10px] font-bold text-white flex items-center justify-center border border-white">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </button>
+
+            {bellOpen && (
+              <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-300/40 overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                  <span className="text-sm font-semibold text-slate-900">
+                    Notifications
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+                    onClick={() => navigate("/reviewer/notifications")}
+                  >
+                    View all
+                  </button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {recent.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-slate-500 text-center">
+                      You're all caught up.
+                    </div>
+                  ) : (
+                    recent.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => {
+                          setBellOpen(false);
+                          navigate(`/reviewer/notifications/${n.id}`);
+                        }}
+                        className={`w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-indigo-50/60 transition ${
+                          !n.read_at ? "bg-indigo-50/40" : ""
+                        }`}
+                      >
+                        <p className="text-xs font-semibold text-slate-900 line-clamp-2">
+                          {n.title}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <ProfileButton />
 
           <button
@@ -132,6 +236,9 @@ export function ReviewerNavbar() {
           </NavLink>
           <NavLink to="/reviewer/history" className={navClass}>
             History
+          </NavLink>
+          <NavLink to="/reviewer/notifications" className={navClass}>
+            Notifications
           </NavLink>
           <NavLink to="/reviewer/profile" className={navClass}>
             Profile

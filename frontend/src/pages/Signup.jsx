@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import CustomSelect from "../components/CustomSelectGradient";
-import { fetchRoles, fetchDepartments, signup } from "../api/api";
+import { fetchRoles, fetchDepartments, fetchSemesters, signup } from "../api/api";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 
@@ -23,7 +23,7 @@ export default function Signup() {
   const [departments, setDepartments] = useState([]);
   const [departmentOptions, setDepartmentOptions] = useState([]);
   const [yearOptions, setYearOptions] = useState([]);
-  const [semesterOptions, setSemesterOptions] = useState([]);
+  const [academicSemesterOptions, setAcademicSemesterOptions] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,10 +44,12 @@ export default function Signup() {
         updated.semester = "";
       }
 
-      if (name === "role" && actualValue !== "STUDENT") {
+      if (name === "role") {
         updated.role = actualValue;
-        updated.studyYear = "";
-        updated.semester = "";
+        if (actualValue !== "STUDENT") {
+          updated.studyYear = "";
+          updated.semester = "";
+        }
       }
 
       return updated;
@@ -60,9 +62,10 @@ export default function Signup() {
   useEffect(() => {
     async function loadInitial() {
       try {
-        const [rolesData, deptData] = await Promise.all([
+        const [rolesData, deptData, semesterCodes] = await Promise.all([
           fetchRoles(),
           fetchDepartments(),
+          fetchSemesters(),
         ]);
 
         setRoles(rolesData || []);
@@ -74,6 +77,17 @@ export default function Signup() {
             label: `${d.name} (${d.code})`,
           })) || [];
         setDepartmentOptions(deptOpts);
+
+        const semLabel = {
+          A: "Semester A",
+          B: "Semester B",
+          SUMMER: "Summer semester",
+        };
+        const ac = (semesterCodes || []).map((v) => ({
+          value: v,
+          label: semLabel[v] || v,
+        }));
+        setAcademicSemesterOptions(ac);
       } catch (e) {
         console.error("Failed to load signup data:", e);
       }
@@ -85,7 +99,6 @@ export default function Signup() {
   useEffect(() => {
     if (!form.department) {
       setYearOptions([]);
-      setSemesterOptions([]);
       return;
     }
 
@@ -95,24 +108,16 @@ export default function Signup() {
 
     if (!dept) {
       setYearOptions([]);
-      setSemesterOptions([]);
       return;
     }
 
     const yearsCount = dept.years_of_study ?? 0;
-    const semPerYear = dept.semesters_per_year ?? 0;
 
     const years = Array.from({ length: yearsCount }, (_, i) => ({
       value: String(i + 1),
       label: `Year ${i + 1}`,
     }));
     setYearOptions(years);
-
-    const sems = Array.from({ length: semPerYear }, (_, i) => ({
-      value: String(i + 1),
-      label: `Semester ${i + 1}`,
-    }));
-    setSemesterOptions(sems);
   }, [form.department, departments]);
 
   const handleSubmit = async (e) => {
@@ -151,7 +156,7 @@ export default function Signup() {
     if (role === "STUDENT") {
       if (!studyYear || !semester) {
         setLoading(false);
-        setError("Study year and semester are required for students.");
+        setError("Academic year and semester are required for students.");
         return;
       }
     }
@@ -384,7 +389,7 @@ export default function Signup() {
                 {form.role === "STUDENT" && (
                   <>
                     <CustomSelect
-                      label="Study Year"
+                      label="Academic year (study level)"
                       value={form.studyYear}
                       onChange={(val) => handleChange("studyYear", val)}
                       options={yearOptions}
@@ -393,8 +398,12 @@ export default function Signup() {
                       label="Semester"
                       value={form.semester}
                       onChange={(val) => handleChange("semester", val)}
-                      options={semesterOptions}
+                      options={academicSemesterOptions}
                     />
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      You will create your password on the activation page after your
+                      department admin approves your request.
+                    </p>
                   </>
                 )}
               </div>

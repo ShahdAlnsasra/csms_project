@@ -66,7 +66,7 @@ const initialForm = {
   semester: "",
 
   instructorEmail: "",
-  language: "Hebrew",
+  language: "English",
 
   purpose: "",
   learningOutputs: "",
@@ -441,7 +441,7 @@ function SideDrawer({
                       sendChatMessage();
                     }
                   }}
-                  placeholder="כתבי כאן הודעה ל-AI... (Enter לשליחה)"
+                  placeholder="Type your message to AI here... (Press Enter to send)"
                   className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200"
                   disabled={chatLoading}
                 />
@@ -562,7 +562,13 @@ export default function LecturerSyllabusNew() {
   const isRejected = normalizedStatus === "REJECTED";
   const fixRejected = isFixMode || isRejected || isFixDraft;
   const [reviewerComment, setReviewerComment] = useState("");
-  const [chatMessages, setChatMessages] = useState([{ role: "assistant", content: "היי 😊 כתבי לי מה את רוצה לשפר/לתקן בסילבוס ואני אעזור." },]);
+  const [chatMessages, setChatMessages] = useState([
+    {
+      role: "assistant",
+      content:
+        "Hi! I can help you improve and fix this syllabus based on reviewer feedback.",
+    },
+  ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const lockStudyYear = Boolean(courseMeta?.studyYear);   // אם הגיע מה-DB ננעל
@@ -573,7 +579,11 @@ export default function LecturerSyllabusNew() {
     if (!syllabusId) {
       setChatMessages((prev) => [
          ...prev,
-         { role: "assistant", content: "כדי להשתמש בצ׳אט צריך קודם לשמור Draft (שיהיה syllabusId). לחצי 'Save draft' ואז נסי שוב 🙏" },
+         {
+           role: "assistant",
+           content:
+             "To use chat, please save as Draft first (so a syllabusId exists), then try again.",
+         },
         ]);
         return;
       }
@@ -584,7 +594,7 @@ export default function LecturerSyllabusNew() {
         const data = await askSyllabusAssistant({
           syllabusId,
           message: text,              // ✅ כאן משתמשים ב-text (ולא userMessage שלא קיים)
-          language: form.language,
+          language: fixRejected ? "English" : form.language,
           ...(fixRejected
             ? {
               currentDraft: {
@@ -609,12 +619,12 @@ export default function LecturerSyllabusNew() {
         : {}),
     });
 
-    const reply = data?.reply || "לא התקבלה תשובה.";
+    const reply = data?.reply || "No response received.";
     setChatMessages((prev) => [...prev, { role: "assistant", content: reply }]);
   } catch (e) {
     setChatMessages((prev) => [
       ...prev,
-      { role: "assistant", content: `שגיאה: ${e?.message || "Chat failed"}` },
+      { role: "assistant", content: `Error: ${e?.message || "Chat failed"}` },
     ]);
   } finally {
     setChatLoading(false);
@@ -851,7 +861,7 @@ useEffect(() => {
           courseType: syll.course_type || "",
           delivery: syll.delivery || "",
           instructorEmail: syll.instructor_email || "",
-          language: syll.language || "Hebrew",
+          language: syll.language || "English",
           purpose: syll.purpose || "",
           learningOutputs: syll.learning_outputs || "",
           courseDescription: syll.course_description || "",

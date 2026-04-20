@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAdminDepartments } from "../../api/api";
-import { GraduationCap, Plus } from "lucide-react";
+import { GraduationCap, Plus, Network } from "lucide-react";
 
 export default function SystemAdminManageDepartments() {
   const navigate = useNavigate();
@@ -53,11 +53,11 @@ export default function SystemAdminManageDepartments() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* HEADER */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="rounded-3xl border border-slate-200 bg-white/95 backdrop-blur px-5 py-5 shadow-lg flex items-center justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 shadow-sm">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-100 to-sky-100 shadow-sm">
             <GraduationCap className="h-6 w-6 text-indigo-600" />
           </div>
           <div>
@@ -75,14 +75,26 @@ export default function SystemAdminManageDepartments() {
         </div>
 
         {/* ADD NEW DEPARTMENT BUTTON */}
-        <button
-          type="button"
-          onClick={handleAddDepartment}
-          className="inline-flex items-center rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-300/60 hover:bg-indigo-700 transition"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add New Department
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/system-admin/departments/diagrams")}
+            className="group inline-flex items-center rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-sky-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-md shadow-indigo-100 hover:from-indigo-100 hover:to-sky-100 transition"
+          >
+            <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-lg bg-white/90 border border-indigo-200">
+              <Network className="h-3.5 w-3.5" />
+            </span>
+            Open Diagram Studio
+          </button>
+          <button
+            type="button"
+            onClick={handleAddDepartment}
+            className="inline-flex items-center rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-300/60 hover:bg-indigo-700 transition"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add New Department
+          </button>
+        </div>
       </div>
 
       {/* TABLE CARD */}

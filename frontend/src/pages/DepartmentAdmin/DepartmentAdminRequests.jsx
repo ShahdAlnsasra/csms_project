@@ -450,6 +450,44 @@ export default function DepartmentAdminRequests() {
                   </p>
                 )}
 
+                {selectedRequest.role === "STUDENT" && (
+                  <div className="rounded-xl bg-indigo-50/80 border border-indigo-100 px-3 py-2 space-y-1 text-sm">
+                    {selectedRequest.id_number && (
+                      <p>
+                        <span className="font-semibold text-slate-600">
+                          ID number:
+                        </span>{" "}
+                        {selectedRequest.id_number}
+                      </p>
+                    )}
+                    {selectedRequest.major != null &&
+                      String(selectedRequest.major).trim() !== "" && (
+                        <p>
+                          <span className="font-semibold text-slate-600">
+                            Major:
+                          </span>{" "}
+                          {selectedRequest.major}
+                        </p>
+                      )}
+                    {selectedRequest.study_year != null && (
+                      <p>
+                        <span className="font-semibold text-slate-600">
+                          Academic year (level):
+                        </span>{" "}
+                        Year {selectedRequest.study_year}
+                      </p>
+                    )}
+                    {selectedRequest.student_semester && (
+                      <p>
+                        <span className="font-semibold text-slate-600">
+                          Semester:
+                        </span>{" "}
+                        {selectedRequest.student_semester}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {selectedRequest.notes && (
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                     <span className="font-semibold text-slate-600 block mb-1">

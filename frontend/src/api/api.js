@@ -49,7 +49,9 @@ export async function signup(form) {
         : null,
   };
 
-  console.log("signup payload >>>", JSON.stringify(payload, null, 2));
+  Object.keys(payload).forEach((k) => {
+    if (payload[k] === undefined) delete payload[k];
+  });
 
   const res = await API.post("signup/", payload);
   return res.data;
@@ -114,6 +116,19 @@ export async function resendSignupVerificationCode(email) {
 
 export async function activateAccount(token, password, username) {
   const res = await API.post(`activate/${token}/`, { password, username });
+  return res.data;
+}
+
+export async function requestPasswordReset(email) {
+  const res = await API.post("forgot-password/", { email });
+  return res.data;
+}
+
+export async function resetPassword(token, password, passwordConfirm) {
+  const res = await API.post(`reset-password/${token}/`, {
+    password,
+    password_confirm: passwordConfirm,
+  });
   return res.data;
 }
 
@@ -271,6 +286,41 @@ export async function fetchCourseAIInsights(courseId) {
   return res.data;
 }
 
+function sanitizeFilenamePart(text, fallback = "course") {
+  const value = String(text || fallback).trim();
+  return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "").replace(/\s+/g, "_") || fallback;
+}
+
+export async function downloadDeptCourseSyllabusPdf(courseId, courseName) {
+  const res = await API.get(`department-admin/courses/${courseId}/syllabus-pdf/`, {
+    responseType: "blob",
+  });
+  const blob = new Blob([res.data], { type: "application/pdf" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilenamePart(courseName, `course_${courseId}`)}_syllabus.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadAdminCourseSyllabusPdf(courseId, courseName) {
+  const res = await API.get(`admin/courses/${courseId}/syllabus-pdf/`, {
+    responseType: "blob",
+  });
+  const blob = new Blob([res.data], { type: "application/pdf" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilenamePart(courseName, `course_${courseId}`)}_syllabus.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 // ===== Lecturer – dynamic data =====
 export async function fetchLecturerCourses({ lecturerId, departmentId, year } = {}) {
   if (!lecturerId) return [];
@@ -382,6 +432,20 @@ export async function fetchLecturerSyllabusById({ lecturerId, syllabusId }) {
     params: { lecturer_id: lecturerId },
   });
   return res.data;
+}
+export async function downloadLecturerSyllabusPdf(syllabusId, courseName) {
+  const res = await API.get(`lecturer/syllabuses/${syllabusId}/download-pdf/`, {
+    responseType: "blob",
+  });
+  const blob = new Blob([res.data], { type: "application/pdf" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilenamePart(courseName, `syllabus_${syllabusId}`)}_syllabus.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 export async function updateLecturerSyllabus({ lecturerId, syllabusId, content, saveAs }) {
   const isDraft = saveAs === "DRAFT";
@@ -538,4 +602,107 @@ export async function rejectSyllabus({ reviewerId, syllabusId, comment, explanat
     explanation: explanation || "",
   });
   return res.data;
+}
+
+// ===== Lecturer notifications =====
+export async function fetchLecturerNotifications(params = {}) {
+  const res = await API.get("lecturer/notifications/", { params });
+  return res.data || [];
+}
+
+export async function fetchLecturerUnreadCount() {
+  const res = await API.get("lecturer/notifications/unread-count/");
+  return res.data;
+}
+
+export async function fetchLecturerNotificationDetail(notificationId) {
+  const res = await API.get(`lecturer/notifications/${notificationId}/`);
+  return res.data;
+}
+
+export async function markLecturerNotificationRead(notificationId) {
+  const res = await API.post(`lecturer/notifications/${notificationId}/read/`);
+  return res.data;
+}
+
+// ===== Reviewer notifications =====
+export async function fetchReviewerNotifications(params = {}) {
+  const res = await API.get("reviewer/notifications/", { params });
+  return res.data || [];
+}
+
+export async function fetchReviewerUnreadCount() {
+  const res = await API.get("reviewer/notifications/unread-count/");
+  return res.data;
+}
+
+export async function fetchReviewerNotificationDetail(notificationId) {
+  const res = await API.get(`reviewer/notifications/${notificationId}/`);
+  return res.data;
+}
+
+export async function markReviewerNotificationRead(notificationId) {
+  const res = await API.post(`reviewer/notifications/${notificationId}/read/`);
+  return res.data;
+}
+
+// ===== Student =====
+export async function fetchStudentMyCourses() {
+  const res = await API.get("student/my-courses/");
+  return res.data || [];
+}
+
+export async function fetchStudentDepartmentCourses() {
+  const res = await API.get("student/department-courses/");
+  return res.data || [];
+}
+
+export async function fetchStudentDepartment() {
+  const res = await API.get("student/my-department/");
+  return res.data;
+}
+
+export async function fetchStudentCourseDetail(courseId) {
+  const res = await API.get(`student/courses/${courseId}/`);
+  return res.data;
+}
+
+export async function fetchStudentCourseAIInsights(courseId) {
+  const res = await API.get(`student/courses/${courseId}/ai-insights/`);
+  return res.data;
+}
+
+export async function fetchStudentNotifications(params = {}) {
+  const res = await API.get("student/notifications/", { params });
+  return res.data || [];
+}
+
+export async function fetchStudentUnreadCount() {
+  const res = await API.get("student/notifications/unread-count/");
+  return res.data;
+}
+
+export async function fetchStudentNotificationDetail(notificationId) {
+  const res = await API.get(`student/notifications/${notificationId}/`);
+  return res.data;
+}
+
+export async function markStudentNotificationRead(notificationId) {
+  const res = await API.post(`student/notifications/${notificationId}/read/`);
+  return res.data;
+}
+
+export async function downloadStudentSyllabusPdf(courseId, courseName) {
+  const res = await API.get(`student/courses/${courseId}/syllabus-pdf/`, {
+    responseType: "blob",
+  });
+  const blob = new Blob([res.data], { type: "application/pdf" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilenamePart(courseName, `course_${courseId}`)}_syllabus.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }

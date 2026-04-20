@@ -23,6 +23,7 @@ describe('Signup Component', () => {
       { value: 'LECTURER', label: 'Lecturer' },
       { value: 'STUDENT', label: 'Student' }
     ]);
+    api.fetchSemesters = jest.fn().mockResolvedValue(['A', 'B', 'SUMMER']);
   });
 
   test('renders signup form with all required fields', async () => {
@@ -57,7 +58,7 @@ describe('Signup Component', () => {
     render(<Signup />);
     
     await waitFor(() => {
-      expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/enter your email/i)).toBeInTheDocument();
     });
     
     const emailInput = screen.getByPlaceholderText(/enter your email/i);

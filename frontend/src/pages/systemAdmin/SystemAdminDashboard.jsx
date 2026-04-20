@@ -47,7 +47,6 @@ export default function SystemAdminDashboard() {
     title,
     count,
     icon: Icon,
-    color,
     description,
     buttons,
   }) => (
@@ -103,21 +102,20 @@ export default function SystemAdminDashboard() {
           title="Active Departments"
           count={departments.length}
           icon={BuildingOffice2Icon}
-          color="indigo"
           description="Total number of departments currently registered in the system."
           buttons={
             <>
               <button
                 type="button"
                 onClick={() => navigateTo("/system-admin/departments")}
-                className="px-4 py-2 rounded-xl bg-violet-600 text-sm font-medium text-white shadow-md hover:bg-violet-500 transition flex items-center gap-1"
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-sm font-medium text-white shadow-md hover:bg-indigo-500 transition flex items-center gap-1"
               >
                 Add New Department
               </button>
               <button
                 type="button"
                 onClick={() => navigateTo("/system-admin/departments/manage")}
-                className="px-4 py-2 rounded-xl border border-violet-200 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition flex items-center gap-1"
+                className="px-4 py-2 rounded-xl border border-indigo-200 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition flex items-center gap-1"
               >
                 Manage Departments <ArrowRightIcon className="h-4 w-4" />
               </button>
@@ -130,13 +128,12 @@ export default function SystemAdminDashboard() {
           title="Pending Requests"
           count={pendingRequestsCount}
           icon={UserPlusIcon}
-          color="violet"
           description="Signup requests for Department Admin roles awaiting approval."
           buttons={
             <button
               type="button"
               onClick={() => navigateTo("/system-admin/requests")}
-              className="px-4 py-2 rounded-xl bg-violet-600 text-sm font-medium text-white shadow-md hover:bg-violet-500 transition flex items-center gap-1"
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-sm font-medium text-white shadow-md hover:bg-indigo-500 transition flex items-center gap-1"
             >
               Review Requests <ArrowRightIcon className="h-4 w-4" />
             </button>

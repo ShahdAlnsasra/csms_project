@@ -21,6 +21,7 @@ import {
   BookOpen,
   GraduationCap,
   ArrowLeft,
+  ArrowUpRight,
   PlusCircle,
   Pencil,
   Trash2,
@@ -437,9 +438,10 @@ export default function DepartmentAdminCourses() {
           <button
             type="button"
             onClick={() => navigate("/department-admin/dashboard")}
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white w-9 h-9 shadow-sm hover:bg-slate-50"
+            className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
           >
-            <ArrowLeft className="h-4 w-4 text-slate-500" />
+            <ArrowLeft className="h-4 w-4 text-slate-500 transition group-hover:-translate-x-0.5" />
+            Back to Dashboard
           </button>
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
@@ -496,9 +498,10 @@ export default function DepartmentAdminCourses() {
               `/department-admin/course-diagram?departmentId=${departmentId}`
             )
           }
-          className="mt-2 inline-flex items-center gap-1 px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-semibold shadow hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="mt-2 group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-300/40 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-300/60 disabled:cursor-not-allowed disabled:opacity-40"
         >
           View Curriculum Diagram
+          <ArrowUpRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </button>
       </div>
 

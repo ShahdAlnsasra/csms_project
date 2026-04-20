@@ -1,5 +1,5 @@
 // frontend/src/components/CourseDiagramSvg.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const COL_WIDTH = 320; // base distance between columns (Year/Sem)
 const ROW_HEIGHT = 160; // base distance between rows
@@ -29,9 +29,58 @@ function getPrereqIds(course) {
   return [];
 }
 
-export default function CourseDiagramSvg({ courses, onCourseClick }) {
+export default function CourseDiagramSvg({
+  courses,
+  onCourseClick,
+  containerClassName,
+  autoFitToViewport = false,
+  viewportWidth = 1180,
+  viewportHeight = 700,
+}) {
   const [zoom, setZoom] = useState(1); // 🔍 zoom factor
   const [hoveredId, setHoveredId] = useState(null);
+
+  const recommendedZoom = useMemo(() => {
+    if (!Array.isArray(courses) || courses.length === 0) return 1;
+
+    const grouped = {};
+    courses.forEach((c) => {
+      const sem = c.semester || "A";
+      const key = `${c.year}-${sem}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(c);
+    });
+
+    const colKeys = Object.keys(grouped).sort((a, b) => {
+      const [ya, sa] = a.split("-");
+      const [yb, sb] = b.split("-");
+      const na = parseInt(ya, 10);
+      const nb = parseInt(yb, 10);
+      if (na !== nb) return na - nb;
+      const order = { A: 0, B: 1, SUMMER: 2 };
+      return (order[sa] ?? 9) - (order[sb] ?? 9);
+    });
+
+    const maxCol = Math.max(colKeys.length - 1, 0);
+    let maxRow = 0;
+    colKeys.forEach((key) => {
+      const list = grouped[key] || [];
+      maxRow = Math.max(maxRow, list.length - 1);
+    });
+
+    const baseWidth = PADDING_X * 2 + (maxCol + 1) * COL_WIDTH;
+    const baseHeight = PADDING_Y * 2 + (maxRow + 1) * ROW_HEIGHT + CARD_HEIGHT;
+
+    const widthFit = (viewportWidth - 48) / baseWidth;
+    const heightFit = (viewportHeight - 64) / baseHeight;
+    return Math.max(0.35, Math.min(1, widthFit, heightFit));
+  }, [courses, viewportWidth, viewportHeight]);
+
+  useEffect(() => {
+    if (autoFitToViewport) {
+      setZoom(recommendedZoom);
+    }
+  }, [autoFitToViewport, recommendedZoom]);
 
   const {
     nodes,
@@ -222,11 +271,16 @@ export default function CourseDiagramSvg({ courses, onCourseClick }) {
   const handleZoomIn = () =>
     setZoom((z) => Math.min(z + 0.25, 2.5)); // max x2.5
   const handleZoomOut = () =>
-    setZoom((z) => Math.max(z - 0.25, 0.5)); // min x0.5
-  const handleReset = () => setZoom(1);
+    setZoom((z) => Math.max(z - 0.25, 0.35)); // min x0.35
+  const handleReset = () => setZoom(autoFitToViewport ? recommendedZoom : 1);
 
   return (
-    <div className="w-full h-[620px] rounded-3xl border border-slate-200 bg-slate-50 overflow-auto relative">
+    <div
+      className={
+        containerClassName ||
+        "w-full h-[620px] rounded-3xl border border-slate-200 bg-slate-50 overflow-auto relative"
+      }
+    >
       {/* Column headers aligned with the grid */}
       {columnMeta.length > 0 && (
         <div className="absolute left-0 right-0 top-0 z-10 px-3 pt-3 pointer-events-none">

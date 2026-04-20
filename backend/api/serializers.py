@@ -76,6 +76,10 @@ class SignupRequestSerializer(serializers.ModelSerializer):
             "created_at",
             "created_at_display",
             "email_verified",
+            "study_year",
+            "student_semester",
+            "major",
+            "id_number",
         ]
 
     def get_full_name(self, obj):
@@ -124,6 +128,7 @@ class CourseSerializer(serializers.ModelSerializer):
     # ---------- read-only display fields ----------
     lecturers_display = serializers.SerializerMethodField(read_only=True)
     prerequisites_display = serializers.SerializerMethodField(read_only=True)
+    has_approved_syllabus = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Course
@@ -142,6 +147,7 @@ class CourseSerializer(serializers.ModelSerializer):
             # read-only display:
             "lecturers_display",
             "prerequisites_display",
+            "has_approved_syllabus",
         ]
 
     # ---------- create / update ----------
@@ -198,6 +204,9 @@ class CourseSerializer(serializers.ModelSerializer):
                 }
             )
         return result
+
+    def get_has_approved_syllabus(self, obj):
+        return obj.syllabuses.filter(status="APPROVED").exists()
 
 
 
@@ -394,3 +403,41 @@ class SyllabusChatMessageSerializer(serializers.ModelSerializer):
         model = SyllabusChatMessage
         fields = ["id", "syllabus", "role", "content", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+
+from .models import Notification
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    course_code = serializers.SerializerMethodField()
+    course_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "title",
+            "body",
+            "notification_type",
+            "course",
+            "sender_name",
+            "course_code",
+            "course_name",
+            "created_at",
+            "read_at",
+        ]
+
+    def get_sender_name(self, obj):
+        if obj.sender_id:
+            return (
+                f"{obj.sender.first_name} {obj.sender.last_name}".strip()
+                or obj.sender.email
+            )
+        return None
+
+    def get_course_code(self, obj):
+        return obj.course.code if obj.course_id else None
+
+    def get_course_name(self, obj):
+        return obj.course.name if obj.course_id else None

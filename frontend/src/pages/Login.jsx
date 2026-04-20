@@ -17,6 +17,11 @@ export default function Login() {
 
     try {
       const trimmedIdentifier = identifier.trim();
+      if (!trimmedIdentifier || !password) {
+        setError("Please enter both your email/username and password.");
+        setLoading(false);
+        return;
+      }
       const user = await login(trimmedIdentifier, password);
 
       localStorage.setItem("csmsUser", JSON.stringify(user));
@@ -29,6 +34,8 @@ export default function Login() {
         navigate("/lecturer/dashboard");
       } else if (user.role === "REVIEWER") {
         navigate("/reviewer/dashboard");
+      } else if (user.role === "STUDENT") {
+        navigate("/student/dashboard");
       } else {
         navigate("/");
       }
@@ -162,7 +169,7 @@ export default function Login() {
                 <button
                   type="button"
                   className="text-indigo-700 hover:text-indigo-600 underline underline-offset-4"
-                  onClick={() => alert("Forgot password flow will be here later")}
+                  onClick={() => navigate("/forgot-password")}
                 >
                   Forgot password?
                 </button>

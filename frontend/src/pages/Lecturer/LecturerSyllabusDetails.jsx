@@ -14,7 +14,9 @@ import {
   fetchLecturerCourseById,
   fetchDepartments,
   cloneLecturerSyllabus,
+  downloadLecturerSyllabusPdf,
 } from "../../api/api";
+import { Download } from "lucide-react";
 
 // ---------- helpers ----------
 const safeJson = (s) => {
@@ -377,6 +379,17 @@ const cloneAndEdit = async () => {
   }
 };
 
+  const handleDownloadApprovedPdf = async () => {
+    if (!syllabus?.id) return;
+    try {
+      await downloadLecturerSyllabusPdf(syllabus.id, syllabus?.course_name);
+    } catch (e) {
+      const msg =
+        e?.response?.data?.detail || "Download is available only after approval.";
+      alert(msg);
+    }
+  };
+
 
   if (loading && !syllabus) {
     return (
@@ -623,6 +636,17 @@ const cloneAndEdit = async () => {
                 {isApproved
                   ? "Edit & resubmit (creates new draft)"
                   : "Fix & resubmit (creates new draft)"}
+              </button>
+            )}
+
+            {isApproved && (
+              <button
+                type="button"
+                onClick={handleDownloadApprovedPdf}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-extrabold shadow-lg"
+              >
+                <Download className="h-5 w-5" />
+                Download approved syllabus (PDF)
               </button>
             )}
 

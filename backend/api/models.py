@@ -266,6 +266,19 @@ class User(AbstractBaseUser, PermissionsMixin):
     # לסטודנטים
     study_year = models.IntegerField(null=True, blank=True)
 
+    student_semester = models.CharField(
+        max_length=10,
+        choices=[
+            ("A", "Semester A"),
+            ("B", "Semester B"),
+            ("SUMMER", "Summer Semester"),
+        ],
+        null=True,
+        blank=True,
+    )
+
+    major = models.CharField(max_length=120, blank=True, default="")
+
     # למרצים – אילו קורסים הוא מלמד
     courses = models.ManyToManyField(Course, blank=True)
 
@@ -307,6 +320,8 @@ class SignupRequest(models.Model):
     department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
     study_year = models.IntegerField(null=True, blank=True)
 
+    major = models.CharField(max_length=120, blank=True, default="")
+
     student_semester = models.CharField(
         max_length=10,
         choices=[
@@ -345,6 +360,8 @@ class SignupRequest(models.Model):
 
     # NEW – to avoid sending multiple emails when status is edited
     magic_link_sent = models.BooleanField(default=False)
+
+    signup_password_hash = models.CharField(max_length=128, blank=True)
 
     def __str__(self):
         return f"Signup: {self.email} ({self.role})"
@@ -506,3 +523,33 @@ class SyllabusChatMessage(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+class Notification(models.Model):
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    notification_type = models.CharField(max_length=40, default="GENERAL")
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sent_notifications",
+    )
+    course = models.ForeignKey(
+        Course,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]

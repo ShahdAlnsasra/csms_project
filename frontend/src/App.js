@@ -4,6 +4,8 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import VerifyEmail from "./pages/VerifyEmail";
 import ActivateAccount from "./pages/ActivateAccount";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 import Footer from "./components/Footer";
 import TermsPage from "./pages/TermsPage";
@@ -19,6 +21,7 @@ import SystemAdminDepartments from "./pages/systemAdmin/SystemAdminDepartments";
 import SystemAdminDepartmentDetails from "./pages/systemAdmin/SystemAdminDepartmentDetails";
 import SystemAdminManageDepartments from "./pages/systemAdmin/SystemAdminManageDepartments";
 import SystemAdminDepartmentEdit from "./pages/systemAdmin/SystemAdminDepartmentEdit";
+import SystemAdminDepartmentDiagrams from "./pages/systemAdmin/SystemAdminDepartmentDiagrams";
 
 // Department Admin
 import DepartmentAdminLayout from "./components/DepartmentAdminLayout";
@@ -37,6 +40,8 @@ import LecturerCourseVersions from "./pages/Lecturer/LecturerCourseVersions";
 import LecturerSyllabusNew from "./pages/Lecturer/LecturerSyllabusNew";
 import LecturerSyllabusDetails from "./pages/Lecturer/LecturerSyllabusDetails";
 import LecturerSyllabusEdit from "./pages/Lecturer/LecturerSyllabusEdit";
+import LecturerNotifications from "./pages/Lecturer/LecturerNotifications";
+import LecturerNotificationDetail from "./pages/Lecturer/LecturerNotificationDetail";
 
 // Reviewer
 import ReviewerLayout from "./components/ReviewerLayout";
@@ -46,6 +51,17 @@ import ReviewerEditedSyllabuses from "./pages/Reviewer/ReviewerEditedSyllabuses"
 import ReviewerHistory from "./pages/Reviewer/ReviewerHistory";
 import ReviewerSyllabusDetail from "./pages/Reviewer/ReviewerSyllabusDetail";
 import ReviewerEditedSyllabusDetail from "./pages/Reviewer/ReviewerEditedSyllabusDetail";
+import ReviewerNotifications from "./pages/Reviewer/ReviewerNotifications";
+import ReviewerNotificationDetail from "./pages/Reviewer/ReviewerNotificationDetail";
+
+// Student
+import StudentLayout from "./components/StudentLayout";
+import StudentDashboard from "./pages/Student/StudentDashboard";
+import StudentMyCourses from "./pages/Student/StudentMyCourses";
+import StudentCourseDetail from "./pages/Student/StudentCourseDetail";
+import StudentCourseDiagramPage from "./pages/Student/StudentCourseDiagramPage";
+import StudentNotifications from "./pages/Student/StudentNotifications";
+import StudentNotificationDetail from "./pages/Student/StudentNotificationDetail";
 
 function App() {
   return (
@@ -59,6 +75,8 @@ function App() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/activate/:token" element={<ActivateAccount />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
 
             {/* Footer pages */}
             <Route path="/terms" element={<TermsPage />} />
@@ -72,6 +90,7 @@ function App() {
               <Route path="requests" element={<SystemAdminRequests />} />
               <Route path="departments" element={<SystemAdminDepartments />} />
               <Route path="departments/manage" element={<SystemAdminManageDepartments />} />
+              <Route path="departments/diagrams" element={<SystemAdminDepartmentDiagrams />} />
               <Route path="departments/:id" element={<SystemAdminDepartmentDetails />} />
               <Route path="departments/edit/:code" element={<SystemAdminDepartmentEdit />} />
               <Route path="profile" element={<UserProfile />} />
@@ -98,6 +117,8 @@ function App() {
               <Route path="courses/:courseId/new" element={<LecturerSyllabusNew />} />
               <Route path="courses/:courseId/versions/:versionId" element={<LecturerSyllabusDetails />} />
               <Route path="courses/:courseId/versions/:versionId/edit" element={<LecturerSyllabusEdit />} />
+              <Route path="notifications" element={<LecturerNotifications />} />
+              <Route path="notifications/:notificationId" element={<LecturerNotificationDetail />} />
               <Route path="profile" element={<UserProfile />} />
             </Route>
 
@@ -109,7 +130,21 @@ function App() {
               <Route path="new-syllabuses/:syllabusId" element={<ReviewerSyllabusDetail />} />
               <Route path="edited-syllabuses" element={<ReviewerEditedSyllabuses />} />
               <Route path="edited-syllabuses/:syllabusId" element={<ReviewerEditedSyllabusDetail />} />
+              <Route path="notifications" element={<ReviewerNotifications />} />
+              <Route path="notifications/:notificationId" element={<ReviewerNotificationDetail />} />
               <Route path="history" element={<ReviewerHistory />} />
+              <Route path="profile" element={<UserProfile />} />
+            </Route>
+
+            {/* Student */}
+            <Route path="/student" element={<StudentLayout />}>
+              <Route index element={<StudentDashboard />} />
+              <Route path="dashboard" element={<StudentDashboard />} />
+              <Route path="courses" element={<StudentMyCourses />} />
+              <Route path="courses/:courseId" element={<StudentCourseDetail />} />
+              <Route path="course-diagram" element={<StudentCourseDiagramPage />} />
+              <Route path="notifications" element={<StudentNotifications />} />
+              <Route path="notifications/:notificationId" element={<StudentNotificationDetail />} />
               <Route path="profile" element={<UserProfile />} />
             </Route>
           </Routes>
