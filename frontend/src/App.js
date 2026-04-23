@@ -30,6 +30,7 @@ import DepartmentAdminRequests from "./pages/DepartmentAdmin/DepartmentAdminRequ
 import DepartmentAdminCourses from "./pages/DepartmentAdmin/DepartmentAdminCourses";
 import DeptCourseDiagramPage from "./pages/DepartmentAdmin/DeptCourseDiagramPage";
 import DepartmentAdminCourseDetail from "./pages/DepartmentAdmin/DepartmentAdminCourseDetail";
+import DepartmentAdminNextSemesterAssignments from "./pages/DepartmentAdmin/DepartmentAdminNextSemesterAssignments";
 
 // Lecturer
 import LecturerLayout from "./components/LecturerLayout";
@@ -62,6 +63,7 @@ import StudentCourseDetail from "./pages/Student/StudentCourseDetail";
 import StudentCourseDiagramPage from "./pages/Student/StudentCourseDiagramPage";
 import StudentNotifications from "./pages/Student/StudentNotifications";
 import StudentNotificationDetail from "./pages/Student/StudentNotificationDetail";
+import StudentNextSemesterPlan from "./pages/Student/StudentNextSemesterPlan";
 
 function App() {
   return (
@@ -103,6 +105,7 @@ function App() {
               <Route path="requests" element={<DepartmentAdminRequests />} />
               <Route path="courses" element={<DepartmentAdminCourses />} />
               <Route path="course-diagram" element={<DeptCourseDiagramPage />} />
+              <Route path="next-semester-assignments" element={<DepartmentAdminNextSemesterAssignments />} />
               <Route path="courses/:courseId" element={<DepartmentAdminCourseDetail />} />
               <Route path="profile" element={<UserProfile />} />
             </Route>
@@ -145,6 +148,7 @@ function App() {
               <Route path="course-diagram" element={<StudentCourseDiagramPage />} />
               <Route path="notifications" element={<StudentNotifications />} />
               <Route path="notifications/:notificationId" element={<StudentNotificationDetail />} />
+              <Route path="next-semester-plan" element={<StudentNextSemesterPlan />} />
               <Route path="profile" element={<UserProfile />} />
             </Route>
           </Routes>

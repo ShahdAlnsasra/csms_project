@@ -9,6 +9,8 @@ export default function FancySelect({
   placeholder = "Select",
   icon: Icon,
   className = "",
+  compact = false,
+  optionsMaxHeightClass = "max-h-64",
 }) {
   const selected = options.find((o) => String(o.value) === String(value));
 
@@ -17,28 +19,33 @@ export default function FancySelect({
       <Listbox value={value} onChange={onChange}>
         <div className="relative">
           <Listbox.Button
-            className="
+            className={`
               w-full rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50
-              px-3 py-2.5 text-left text-sm shadow-sm hover:shadow
+              px-3 ${compact ? "py-2 text-xs" : "py-2.5 text-sm"} text-left shadow-sm hover:shadow
               focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300
-              flex items-center gap-2
-            "
+              flex items-center gap-2 min-w-0
+            `}
           >
-            {Icon ? <Icon className="h-5 w-5 text-slate-400" /> : null}
+            {Icon ? <Icon className={`shrink-0 text-slate-400 ${compact ? "h-4 w-4" : "h-5 w-5"}`} /> : null}
 
-            <span className={`flex-1 ${selected ? "text-slate-900" : "text-slate-500"}`}>
+            <span
+              className={`flex-1 min-w-0 truncate text-left ${
+                selected ? "text-slate-900" : "text-slate-500"
+              }`}
+              title={selected?.label || placeholder}
+            >
               {selected?.label || placeholder}
             </span>
 
-            <ChevronUpDownIcon className="h-5 w-5 text-slate-400" />
+            <ChevronUpDownIcon className={`shrink-0 text-slate-400 ${compact ? "h-4 w-4" : "h-5 w-5"}`} />
           </Listbox.Button>
 
           <Transition as={Fragment} leave="transition ease-in duration-100" leaveFrom="opacity-100" leaveTo="opacity-0">
             <Listbox.Options
-              className="
-                absolute z-20 mt-2 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl
-                max-h-64 p-1
-              "
+              className={`
+                absolute z-20 mt-2 w-full min-w-[12rem] overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl
+                ${optionsMaxHeightClass} p-1
+              `}
             >
               {options.map((opt) => (
                 <Listbox.Option

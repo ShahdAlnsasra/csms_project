@@ -47,6 +47,10 @@ export async function signup(form) {
       form.role === "STUDENT" && form.semester
         ? String(form.semester)
         : null,
+    degree_track:
+      form.role === "STUDENT" && form.degreeTrack
+        ? String(form.degreeTrack).toUpperCase()
+        : null,
   };
 
   Object.keys(payload).forEach((k) => {
@@ -223,11 +227,13 @@ export async function decideOnDeptSignupRequest(requestId, decision, reason) {
 
 
 // ===== Department Admin – Courses =====
-export async function fetchDeptCourses({ departmentId, year }) {
+export async function fetchDeptCourses({ departmentId, year, degreeTrack, planningType }) {
   if (!departmentId) return [];
 
   const params = { department_id: departmentId };
   if (year) params.year = year;
+  if (degreeTrack) params.degree_track = degreeTrack;
+  if (planningType) params.planning_type = planningType;
 
   const res = await API.get("department-admin/courses/", { params });
   return res.data || [];
@@ -277,6 +283,99 @@ export async function fetchCourseGraph({ departmentId, year }) {
   return res.data || { nodes: [], edges: [] };
 }
 
+export async function fetchTerms() {
+  const res = await API.get("terms/");
+  return res.data || [];
+}
+
+export async function fetchCurrentTerm() {
+  const res = await API.get("terms/current/");
+  return res.data;
+}
+
+export async function fetchNextTerm() {
+  const res = await API.get("terms/next/");
+  return res.data;
+}
+
+export async function setCurrentTerm(termId) {
+  const res = await API.put("admin/terms/current/", { term_id: termId });
+  return res.data;
+}
+
+export async function fetchDeptCourseOfferings({ departmentId, termId }) {
+  const params = {};
+  if (departmentId) params.department_id = departmentId;
+  if (termId) params.term_id = termId;
+  const res = await API.get("department-admin/course-offerings/", { params });
+  return res.data || [];
+}
+
+export async function upsertDeptCourseOffering(payload) {
+  const res = await API.post("department-admin/course-offerings/", payload);
+  return res.data;
+}
+
+export async function fetchDeptTermEditWindow(termId) {
+  const res = await API.get("department-admin/term-edit-window/", {
+    params: { term_id: termId },
+  });
+  return res.data;
+}
+
+export async function saveDeptTermEditWindow(termId, studentEditStart, studentEditEnd) {
+  const res = await API.put("department-admin/term-edit-window/", {
+    term_id: termId,
+    student_edit_start: studentEditStart || null,
+    student_edit_end: studentEditEnd || null,
+  });
+  return res.data;
+}
+
+export async function updateDeptCourseOffering(offeringId, payload) {
+  const res = await API.put(`department-admin/course-offerings/${offeringId}/`, payload);
+  return res.data;
+}
+
+export async function deleteDeptCourseOffering(offeringId) {
+  await API.delete(`department-admin/course-offerings/${offeringId}/`);
+}
+
+export async function fetchLecturerOfferings(termId) {
+  const res = await API.get("lecturer/course-offerings/", {
+    params: termId ? { term_id: termId } : {},
+  });
+  return res.data || [];
+}
+
+export async function fetchReviewerDepartmentCoursesByTerm(termId) {
+  const res = await API.get("reviewer/department-courses/", { params: { term_id: termId } });
+  return res.data || [];
+}
+
+export async function fetchStudentNextSemesterPlan() {
+  const res = await API.get("student/next-semester-plan/");
+  return res.data;
+}
+
+export async function saveStudentNextSemesterPlan(planId, electiveCourseIds) {
+  const res = await API.post("student/next-semester-plan/save/", {
+    plan_id: planId,
+    elective_course_ids: electiveCourseIds,
+  });
+  return res.data;
+}
+
+export async function submitStudentNextSemesterPlan(planId) {
+  const res = await API.post("student/next-semester-plan/submit/", { plan_id: planId });
+  return res.data;
+}
+
+export async function fetchStudentNextTermCourses() {
+  const res = await API.get("student/my-courses/next-term/");
+  return res.data || [];
+}
+
 
 // ===== Department Admin – Course AI Insights =====
 export async function fetchCourseAIInsights(courseId) {
@@ -322,11 +421,12 @@ export async function downloadAdminCourseSyllabusPdf(courseId, courseName) {
 }
 
 // ===== Lecturer – dynamic data =====
-export async function fetchLecturerCourses({ lecturerId, departmentId, year } = {}) {
+export async function fetchLecturerCourses({ lecturerId, departmentId, year, termId } = {}) {
   if (!lecturerId) return [];
   const params = { lecturer_id: lecturerId };
   if (departmentId) params.department_id = departmentId;
   if (year) params.year = year;
+  if (termId) params.term_id = termId;
   const res = await API.get("lecturer/courses/", { params });
   return res.data || [];
 }
@@ -625,6 +725,11 @@ export async function markLecturerNotificationRead(notificationId) {
   return res.data;
 }
 
+export async function markAllLecturerNotificationsRead() {
+  const res = await API.post("lecturer/notifications/mark-all-read/");
+  return res.data;
+}
+
 // ===== Reviewer notifications =====
 export async function fetchReviewerNotifications(params = {}) {
   const res = await API.get("reviewer/notifications/", { params });
@@ -689,6 +794,11 @@ export async function fetchStudentNotificationDetail(notificationId) {
 
 export async function markStudentNotificationRead(notificationId) {
   const res = await API.post(`student/notifications/${notificationId}/read/`);
+  return res.data;
+}
+
+export async function markAllStudentNotificationsRead() {
+  const res = await API.post("student/notifications/mark-all-read/");
   return res.data;
 }
 

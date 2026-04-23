@@ -135,6 +135,9 @@ export function DepartmentAdminNavbar() {
     <NavLink to="/department-admin/courses" className={navClass}>
       Courses
     </NavLink>
+    <NavLink to="/department-admin/next-semester-assignments" className={navClass}>
+      Next Semester
+    </NavLink>
 
     {/* ✅ Profile בסוף */}
     <NavLink to="/department-admin/profile" className={navClass}>

@@ -653,13 +653,6 @@ export default function LecturerSyllabusNew() {
 
   const setField = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  const typeOptions = [
-    { value: "", label: "Select course type" },
-    { value: "MANDATORY", label: "Mandatory" },
-    { value: "ELECTIVE", label: "Elective" },
-    { value: "GENERAL", label: "General" },
-  ];
-
   const deliveryOptions = [
     { value: "", label: "Select teaching mode" },
     { value: "IN_PERSON", label: "In-person" },
@@ -806,6 +799,7 @@ useEffect(() => {
         credits: toNiceNumberString(rawCredits) || prev.credits,
         studyYear: courseYear ? String(courseYear) : prev.studyYear,
         semester: course.semester ? String(course.semester) : prev.semester,
+        courseType: course.planning_type || prev.courseType || "MANDATORY",
       }));
     } catch (e) {
       setErrors([e?.message || "Failed to load initial data"]);
@@ -1017,7 +1011,6 @@ const validate = (saveAs) => {
   const errs = [];
 
   if (!form.academicYear) errs.push("Academic year is required.");
-  if (!form.courseType) errs.push("Course type is required.");
   if (!form.delivery) errs.push("Teaching mode is required.");
   if (!form.studyYear) errs.push("Study year is required.");
   if (!form.semester) errs.push("Semester is required.");
@@ -1493,10 +1486,13 @@ const handleSubmit = async (saveAs) => {
               <Field label="Credit points" type="number" value={form.credits} onChange={() => {}} readOnly disabled />
 
               <label className="flex flex-col gap-1 text-[13px] font-medium text-slate-800 font-sans">
-                <span className="flex items-center gap-1">
-                  Course type <span className="text-rose-600">*</span>
-                </span>
-                <FancySelect value={form.courseType} onChange={(v) => setField("courseType", v)} options={typeOptions} />
+                <span className="flex items-center gap-1">Course type</span>
+                <input
+                  type="text"
+                  readOnly
+                  value={form.courseType || "MANDATORY"}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-700"
+                />
               </label>
 
               <label className="flex flex-col gap-1 text-[13px] font-medium text-slate-800 font-sans">

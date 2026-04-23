@@ -55,6 +55,15 @@ def _unread_count_for_role(request, role):
     return Response({"unread": unread})
 
 
+def _mark_all_read_for_role(request, role):
+    user, err = _role_user(request, role)
+    if err:
+        return err
+    now = timezone.now()
+    updated = Notification.objects.filter(recipient=user, read_at__isnull=True).update(read_at=now)
+    return Response({"detail": "All marked as read.", "updated": updated})
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def lecturer_notifications(request):
@@ -77,6 +86,12 @@ def lecturer_notification_mark_read(request, notification_id):
 @permission_classes([IsAuthenticated])
 def lecturer_notification_unread_count(request):
     return _unread_count_for_role(request, "LECTURER")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def lecturer_notifications_mark_all_read(request):
+    return _mark_all_read_for_role(request, "LECTURER")
 
 
 @api_view(["GET"])

@@ -38,12 +38,14 @@ from .student_views import (
     student_notifications,
     student_notification_detail,
     student_notification_mark_read,
+    student_notifications_mark_all_read,
     student_notification_unread_count,
 )
 from .role_notifications import (
     lecturer_notifications,
     lecturer_notification_detail,
     lecturer_notification_mark_read,
+    lecturer_notifications_mark_all_read,
     lecturer_notification_unread_count,
     reviewer_notifications,
     reviewer_notification_detail,
@@ -54,6 +56,21 @@ from .pdf_views import (
     department_admin_course_syllabus_pdf,
     lecturer_syllabus_pdf,
     system_admin_course_syllabus_pdf,
+)
+from .term_degree_views import (
+    current_term,
+    department_admin_term_edit_window,
+    department_admin_offering_detail,
+    department_admin_offerings,
+    lecturer_offerings,
+    list_terms,
+    next_term,
+    reviewer_department_courses_by_term,
+    set_current_term,
+    student_next_semester_plan,
+    student_next_term_courses,
+    student_save_next_semester_plan,
+    student_submit_next_semester_plan,
 )
 urlpatterns = [
     path("", include(router.urls)),
@@ -122,6 +139,27 @@ urlpatterns = [
     ),
     path("syllabus-statuses/", views.get_syllabus_statuses, name="syllabus-statuses"),
     path("course-semesters/", views.get_course_semesters),
+    path("terms/", list_terms, name="terms-list"),
+    path("terms/current/", current_term, name="terms-current"),
+    path("terms/next/", next_term, name="terms-next"),
+    path("admin/terms/current/", set_current_term, name="terms-set-current"),
+    path("department-admin/course-offerings/", department_admin_offerings, name="department-admin-offerings"),
+    path(
+        "department-admin/term-edit-window/",
+        department_admin_term_edit_window,
+        name="department-admin-term-edit-window",
+    ),
+    path(
+        "department-admin/course-offerings/<int:offering_id>/",
+        department_admin_offering_detail,
+        name="department-admin-offering-detail",
+    ),
+    path("lecturer/course-offerings/", lecturer_offerings, name="lecturer-offerings"),
+    path(
+        "reviewer/department-courses/",
+        reviewer_department_courses_by_term,
+        name="reviewer-department-courses-by-term",
+    ),
     path("lecturer/syllabuses/filters/", views.lecturer_syllabus_filters),
     path("lecturer/syllabuses/create/", views.create_lecturer_syllabus),
 
@@ -182,6 +220,14 @@ urlpatterns = [
         name="student-course-ai-insights",
     ),
     path("student/notifications/", student_notifications, name="student-notifications"),
+    path("student/next-semester-plan/", student_next_semester_plan, name="student-next-plan"),
+    path("student/next-semester-plan/save/", student_save_next_semester_plan, name="student-next-plan-save"),
+    path(
+        "student/next-semester-plan/submit/",
+        student_submit_next_semester_plan,
+        name="student-next-plan-submit",
+    ),
+    path("student/my-courses/next-term/", student_next_term_courses, name="student-next-term-courses"),
     path(
         "student/notifications/unread-count/",
         student_notification_unread_count,
@@ -196,6 +242,11 @@ urlpatterns = [
         "student/notifications/<int:notification_id>/read/",
         student_notification_mark_read,
         name="student-notification-read",
+    ),
+    path(
+        "student/notifications/mark-all-read/",
+        student_notifications_mark_all_read,
+        name="student-notifications-mark-all-read",
     ),
     path(
         "department-admin/courses/<int:course_id>/syllabus-pdf/",
@@ -222,6 +273,11 @@ urlpatterns = [
         "lecturer/notifications/<int:notification_id>/read/",
         lecturer_notification_mark_read,
         name="lecturer-notification-read",
+    ),
+    path(
+        "lecturer/notifications/mark-all-read/",
+        lecturer_notifications_mark_all_read,
+        name="lecturer-notifications-mark-all-read",
     ),
     
 ]

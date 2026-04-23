@@ -28,6 +28,10 @@ class Department(models.Model):
     years_of_study = models.IntegerField(default=4)        # נקבע ע"י SUPER ADMIN
     semesters_per_year = models.IntegerField(default=2)    # נקבע ע"י SUPER ADMIN
     description = models.TextField(blank=True, null=True)
+    bsc_required_credits = models.PositiveIntegerField(default=120)
+    msc_required_credits = models.PositiveIntegerField(default=36)
+    bsc_max_counted_elective_credits = models.PositiveIntegerField(default=7)
+    msc_max_counted_elective_credits = models.PositiveIntegerField(default=7)
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -55,8 +59,22 @@ class Course(models.Model):
     ]
 
     semester = models.CharField(max_length=10, choices=semester_choices, default="A")
+    degree_track_choices = [
+        ("BSC", "BSc"),
+        ("MSC", "MSc"),
+        ("BOTH", "BSc + MSc"),
+    ]
+    degree_track = models.CharField(max_length=10, choices=degree_track_choices, default="BSC")
+    planning_type_choices = [
+        ("MANDATORY", "Mandatory"),
+        ("ELECTIVE", "Elective"),
+    ]
+    planning_type = models.CharField(
+        max_length=20,
+        choices=planning_type_choices,
+        default="MANDATORY",
+    )
 
-    lecturers = models.ManyToManyField(settings.AUTH_USER_MODEL, limit_choices_to={"role": "LECTURER"})
     # ✅ NEW: prerequisites (courses you must pass before this one)
     prerequisites = models.ManyToManyField(
         "self",
@@ -278,6 +296,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     major = models.CharField(max_length=120, blank=True, default="")
+    DEGREE_TRACKS = [("BSC", "BSc"), ("MSC", "MSc")]
+    degree_track = models.CharField(max_length=10, choices=DEGREE_TRACKS, null=True, blank=True)
 
     # למרצים – אילו קורסים הוא מלמד
     courses = models.ManyToManyField(Course, blank=True)
@@ -332,6 +352,8 @@ class SignupRequest(models.Model):
         null=True,
         blank=True
     )
+    DEGREE_TRACKS = [("BSC", "BSc"), ("MSC", "MSc")]
+    degree_track = models.CharField(max_length=10, choices=DEGREE_TRACKS, null=True, blank=True)
 
     selected_courses = models.ManyToManyField(Course, blank=True)
 
@@ -553,3 +575,111 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class AcademicTerm(models.Model):
+    semester_choices = [
+        ("A", "Semester A"),
+        ("B", "Semester B"),
+        ("SUMMER", "Summer Semester"),
+    ]
+    academic_year = models.CharField(max_length=9)
+    semester = models.CharField(max_length=10, choices=semester_choices)
+    is_current = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year", "semester"], name="uniq_academic_term_year_semester"
+            ),
+            models.UniqueConstraint(
+                fields=["is_current"],
+                condition=Q(is_current=True),
+                name="uniq_single_current_term",
+            ),
+        ]
+        ordering = ["-academic_year", "semester"]
+
+    def __str__(self):
+        return f"{self.academic_year} {self.semester}"
+
+
+class CourseOffering(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="offerings")
+    term = models.ForeignKey(AcademicTerm, on_delete=models.CASCADE, related_name="offerings")
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name="offerings")
+    lecturers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="course_offerings",
+        limit_choices_to={"role": "LECTURER"},
+    )
+    student_edit_start = models.DateTimeField(null=True, blank=True)
+    student_edit_end = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["course", "term"], name="uniq_course_term_offering"),
+        ]
+        ordering = ["course__code"]
+
+
+class DepartmentTermEditWindow(models.Model):
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name="term_edit_windows")
+    term = models.ForeignKey(AcademicTerm, on_delete=models.CASCADE, related_name="department_edit_windows")
+    student_edit_start = models.DateTimeField(null=True, blank=True)
+    student_edit_end = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["department", "term"], name="uniq_department_term_edit_window"
+            ),
+        ]
+
+
+class StudentSemesterPlan(models.Model):
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("SUBMITTED", "Submitted"),
+    ]
+    DEGREE_TRACKS = [("BSC", "BSc"), ("MSC", "MSc")]
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="semester_plans"
+    )
+    term = models.ForeignKey(AcademicTerm, on_delete=models.CASCADE, related_name="student_plans")
+    degree_track = models.CharField(max_length=10, choices=DEGREE_TRACKS)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="DRAFT")
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "term", "degree_track"], name="uniq_student_term_degree_plan"
+            ),
+        ]
+
+
+class StudentPlannedCourse(models.Model):
+    SELECTION_TYPES = [
+        ("MANDATORY", "Mandatory"),
+        ("ELECTIVE", "Elective"),
+    ]
+    plan = models.ForeignKey(
+        StudentSemesterPlan, on_delete=models.CASCADE, related_name="planned_courses"
+    )
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="planned_in")
+    selection_type = models.CharField(max_length=20, choices=SELECTION_TYPES)
+    counts_toward_degree_elective = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "course"], name="uniq_plan_course"),
+        ]

@@ -363,6 +363,7 @@ export default function SystemAdminDepartmentDiagrams() {
   const [exporting, setExporting] = useState(false);
   const [previewCourses, setPreviewCourses] = useState([]);
   const [diagramMode, setDiagramMode] = useState("ai");
+  const [selectedDegree, setSelectedDegree] = useState("BSC");
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -410,6 +411,15 @@ export default function SystemAdminDepartmentDiagrams() {
   }, []);
 
   useEffect(() => {
+    if (!selectedDepartment) return;
+    if (selectedDepartment.degree === "MSC") {
+      setSelectedDegree("MSC");
+    } else {
+      setSelectedDegree("BSC");
+    }
+  }, [selectedDepartment]);
+
+  useEffect(() => {
     let cancelled = false;
     let hideTimer = null;
     async function loadCourses() {
@@ -438,7 +448,12 @@ export default function SystemAdminDepartmentDiagrams() {
             return next;
           });
         }, 140);
-        const list = await fetchDeptCourses({ departmentId: selectedDeptId });
+        const degreeTrack =
+          selectedDepartment?.degree === "BOTH" ? selectedDegree : selectedDepartment?.degree;
+        const list = await fetchDeptCourses({
+          departmentId: selectedDeptId,
+          degreeTrack: degreeTrack || undefined,
+        });
         if (!cancelled) {
           const normalized = Array.isArray(list) ? list : [];
           setCourses(normalized);
@@ -467,7 +482,7 @@ export default function SystemAdminDepartmentDiagrams() {
       cancelled = true;
       if (hideTimer) clearTimeout(hideTimer);
     };
-  }, [selectedDeptId]);
+  }, [selectedDeptId, selectedDegree, selectedDepartment]);
 
   const handleDownload = async () => {
     const node =
@@ -622,6 +637,32 @@ export default function SystemAdminDepartmentDiagrams() {
               Classic Diagram
             </button>
           </div>
+          {selectedDepartment?.degree === "BOTH" && (
+            <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs font-medium shadow-inner w-fit">
+              <button
+                type="button"
+                onClick={() => setSelectedDegree("BSC")}
+                className={`px-4 py-1.5 rounded-full transition font-semibold ${
+                  selectedDegree === "BSC"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/70"
+                    : "text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                B.Sc.
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDegree("MSC")}
+                className={`px-4 py-1.5 rounded-full transition font-semibold ${
+                  selectedDegree === "MSC"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/70"
+                    : "text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                M.Sc.
+              </button>
+            </div>
+          )}
 
           <div ref={diagramRef} className="rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden">
             {courses.length === 0 && (loadingCourses || isGenerating) ? (

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import {
   fetchLecturerNotifications,
+  markAllLecturerNotificationsRead,
   markLecturerNotificationRead,
 } from "../../api/api";
 
@@ -11,6 +12,7 @@ export default function LecturerNotifications() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [markingAll, setMarkingAll] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -37,16 +39,41 @@ export default function LecturerNotifications() {
     navigate(`/lecturer/notifications/${id}`);
   };
 
+  const markAllRead = async () => {
+    try {
+      setMarkingAll(true);
+      await markAllLecturerNotificationsRead();
+      setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+    } catch {
+      // non-blocking
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Bell className="h-10 w-10 text-indigo-600" />
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Notifications</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Review feedback and workflow updates on your syllabuses.
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Bell className="h-10 w-10 text-indigo-600" />
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-900">Notifications</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Review feedback and workflow updates on your syllabuses.
+            </p>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={markAllRead}
+          disabled={markingAll || items.every((n) => !!n.read_at)}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+          title="Mark all as read"
+          aria-label="Mark all as read"
+        >
+          <CheckCheck className="h-4 w-4" />
+          {markingAll ? "Marking..." : "Mark all read"}
+        </button>
       </div>
 
       {loading ? (
@@ -91,9 +118,13 @@ export default function LecturerNotifications() {
                       )}
                     </div>
                   </div>
-                  {!n.read_at && (
-                    <span className="shrink-0 h-2 w-2 rounded-full bg-indigo-500 mt-1.5" />
-                  )}
+                  <div className="shrink-0 flex items-center gap-2">
+                    {!n.read_at && (
+                      <>
+                        <span className="h-2 w-2 rounded-full bg-indigo-500 mt-0.5" />
+                      </>
+                    )}
+                  </div>
                 </div>
               </button>
             </li>

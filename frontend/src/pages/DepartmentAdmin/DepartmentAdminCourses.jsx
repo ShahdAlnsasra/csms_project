@@ -10,7 +10,6 @@ import { useNavigate } from "react-router-dom";
 import {
   fetchDepartmentDetail,
   fetchDeptCourses,      // GET /api/department-admin/courses/?department_id=..[&year=..]
-  fetchDeptLecturers,
   createDeptCourse,
   updateDeptCourse,
   deleteDeptCourse,
@@ -19,13 +18,13 @@ import {
 import {
   Layers3,
   BookOpen,
-  GraduationCap,
   ArrowLeft,
   ArrowUpRight,
   PlusCircle,
   Pencil,
   Trash2,
 } from "lucide-react";
+import FancySelect from "../../components/FancySelect";
 
 export default function DepartmentAdminCourses() {
   const navigate = useNavigate();
@@ -42,7 +41,6 @@ export default function DepartmentAdminCourses() {
   const [coursesError, setCoursesError] = useState("");
 
   const [allCourses, setAllCourses] = useState([]); // all dept courses (all years)
-  const [lecturers, setLecturers] = useState([]);
 
   const [selectedCourse, setSelectedCourse] = useState(null);
 
@@ -52,8 +50,8 @@ export default function DepartmentAdminCourses() {
     code: "",
     description: "",
     credits: "3.0",
-    semester: "A",
-    lecturerIds: [],
+    degreeTrack: "BSC",
+    planningType: "MANDATORY",
     prerequisiteIds: [],
   });
 
@@ -61,6 +59,7 @@ export default function DepartmentAdminCourses() {
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [prereqQuery, setPrereqQuery] = useState("");
 
   // 1) read csmsUser from localStorage
   useEffect(() => {
@@ -108,17 +107,7 @@ export default function DepartmentAdminCourses() {
       }
     }
 
-    async function loadLecturers() {
-      try {
-        const data = await fetchDeptLecturers(departmentId);
-        setLecturers(data || []);
-      } catch (err) {
-        console.error("Failed to load lecturers:", err);
-      }
-    }
-
     loadDept();
-    loadLecturers();
   }, [departmentId, selectedYear]);
 
   // helper: reset form
@@ -128,8 +117,8 @@ export default function DepartmentAdminCourses() {
       code: "",
       description: "",
       credits: "3.0",
-      semester: "A",
-      lecturerIds: [],
+      degreeTrack: "BSC",
+      planningType: "MANDATORY",
       prerequisiteIds: [],
     });
   };
@@ -241,22 +230,26 @@ export default function DepartmentAdminCourses() {
     return prerequisitesOptions;
   }, [isEditing, selectedCourse, prerequisitesOptions]);
 
+  const filteredPrereqSearchOptions = useMemo(() => {
+    const q = prereqQuery.trim().toLowerCase();
+    if (!q) return filteredPrereqOptions;
+    return filteredPrereqOptions.filter((p) =>
+      String(p.label || "").toLowerCase().includes(q)
+    );
+  }, [prereqQuery, filteredPrereqOptions]);
+
+  const degreeTrackOptions = [
+    { value: "BSC", label: "B.Sc." },
+    { value: "MSC", label: "M.Sc." },
+  ];
+  const planningTypeOptions = [
+    { value: "MANDATORY", label: "Mandatory" },
+    { value: "ELECTIVE", label: "Elective" },
+  ];
+
   // start editing selected course
   const startEditCourse = () => {
     if (!selectedCourse) return;
-
-    // lecturers
-    let lecturerIds = [];
-    if (
-      Array.isArray(selectedCourse.lecturers_display) &&
-      selectedCourse.lecturers_display.length > 0
-    ) {
-      lecturerIds = selectedCourse.lecturers_display.map((l) =>
-        String(l.id)
-      );
-    } else if (Array.isArray(selectedCourse.lecturer_ids)) {
-      lecturerIds = selectedCourse.lecturer_ids.map((id) => String(id));
-    }
 
     // prerequisites
     let prereqIds = [];
@@ -282,8 +275,8 @@ export default function DepartmentAdminCourses() {
         selectedCourse.credits !== null
           ? String(selectedCourse.credits)
           : "3.0",
-      semester: selectedCourse.semester || "A",
-      lecturerIds,
+      degreeTrack: selectedCourse.degree_track || "BSC",
+      planningType: selectedCourse.planning_type || "MANDATORY",
       prerequisiteIds: prereqIds,
     });
 
@@ -345,15 +338,6 @@ export default function DepartmentAdminCourses() {
       setCreateError("Credits must be greater than 0.");
       return;
     }
-    if (!form.semester) {
-      setCreateError("Semester is required.");
-      return;
-    }
-    if (!form.lecturerIds || form.lecturerIds.length === 0) {
-      setCreateError("At least one lecturer must be selected.");
-      return;
-    }
-
     setCreating(true);
     setCreateError("");
     setCreateSuccess("");
@@ -365,9 +349,9 @@ export default function DepartmentAdminCourses() {
         description: form.description.trim() || null,
         credits: Number(form.credits) || 0,
         year: selectedYear,
-        semester: form.semester,
+        degree_track: form.degreeTrack,
+        planning_type: form.planningType,
         department: departmentId,
-        lecturer_ids: form.lecturerIds.map((id) => Number(id)),
         prerequisite_ids: form.prerequisiteIds.map((id) => Number(id)),
       };
 
@@ -449,8 +433,7 @@ export default function DepartmentAdminCourses() {
               Department Academic Structure
             </h1>
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
-              Manage study years and courses for your department. Assign
-              lecturers and define course dependencies.
+              Manage study years and courses for your department.               Assign lecturers and terms under Next Semester. Define prerequisites here.
             </p>
           </div>
         </div>
@@ -564,25 +547,9 @@ export default function DepartmentAdminCourses() {
                         {c.code} · {c.name}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        {c.semester === "A"
-                          ? "Semester A"
-                          : c.semester === "B"
-                          ? "Semester B"
-                          : "Summer Semester"}{" "}
-                        · {c.credits} credits
+                        {c.credits} credits · catalog order
                       </div>
                     </div>
-                    {c.lecturers_display &&
-                      c.lecturers_display.length > 0 && (
-                        <div className="flex items-center gap-1 text-[11px] text-slate-600">
-                          <GraduationCap className="h-3.5 w-3.5" />
-                          <span>
-                            {c.lecturers_display
-                              .map((l) => l.full_name)
-                              .join(", ")}
-                          </span>
-                        </div>
-                      )}
                   </div>
                 </li>
               ))}
@@ -639,25 +606,15 @@ export default function DepartmentAdminCourses() {
                   <span className="font-semibold">Credits:</span>{" "}
                   {selectedCourse.credits}
                 </p>
-                <p>
-                  <span className="font-semibold">Semester:</span>{" "}
-                  {selectedCourse.semester}
-                </p>
                 {selectedCourse.description && (
                   <p>
                     <span className="font-semibold">Description:</span>{" "}
                     {selectedCourse.description}
                   </p>
                 )}
-                {selectedCourse.lecturers_display &&
-                  selectedCourse.lecturers_display.length > 0 && (
-                    <p>
-                      <span className="font-semibold">Lecturer(s):</span>{" "}
-                      {selectedCourse.lecturers_display
-                        .map((l) => l.full_name)
-                        .join(", ")}
-                    </p>
-                  )}
+                <p className="text-xs text-slate-500">
+                  Lecturers and exact term are set in Next Semester (per offering).
+                </p>
                 {selectedCoursePrereqLabels && (
                   <p>
                     <span className="font-semibold">Prerequisites:</span>{" "}
@@ -730,7 +687,6 @@ export default function DepartmentAdminCourses() {
                 </div>
               </div>
 
-              {/* credits + semester + lecturers */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
@@ -752,59 +708,23 @@ export default function DepartmentAdminCourses() {
 
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Semester <span className="text-red-500">*</span>
+                    Degree Track
                   </label>
-                  <select
-                    value={form.semester}
-                    onChange={(e) =>
-                      handleFormChange("semester", e.target.value)
-                    }
-                    className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                    required
-                  >
-                    <option value="">Select semester</option>
-                    <option value="A">Semester A</option>
-                    <option value="B">Semester B</option>
-                    <option value="SUMMER">Summer</option>
-                  </select>
+                  <FancySelect
+                    value={form.degreeTrack}
+                    onChange={(v) => handleFormChange("degreeTrack", v)}
+                    options={degreeTrackOptions}
+                  />
                 </div>
-
                 <div>
                   <label className="block font-semibold text-emerald-900 mb-1">
-                    Lecturers <span className="text-red-500">*</span>
-                    {form.lecturerIds.length > 0 && (
-                      <span className="ml-2 text-xs font-normal text-emerald-700">
-                        ({form.lecturerIds.length} selected)
-                      </span>
-                    )}
+                    Course Type
                   </label>
-                  <select
-                    multiple
-                    value={form.lecturerIds}
-                    onChange={(e) =>
-                      handleFormChange(
-                        "lecturerIds",
-                        Array.from(e.target.selectedOptions).map(
-                          (o) => o.value
-                        )
-                      )
-                    }
-                    className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 h-20"
-                    required
-                  >
-                    {lecturers.length === 0 ? (
-                      <option disabled>No lecturers available</option>
-                    ) : (
-                      lecturers.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.full_name} ({l.email})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Hold Ctrl (Windows) or Cmd (Mac) to select multiple lecturers
-                  </p>
+                  <FancySelect
+                    value={form.planningType}
+                    onChange={(v) => handleFormChange("planningType", v)}
+                    options={planningTypeOptions}
+                  />
                 </div>
               </div>
 
@@ -825,50 +745,66 @@ export default function DepartmentAdminCourses() {
               </div>
 
               {/* prerequisites from ALL years */}
-<div>
-  <div className="flex items-center justify-between mb-1">
-    <label className="block font-semibold text-emerald-900">
-      Prerequisites (optional)
-    </label>
-
-    {isEditing && (
-      <button
-        type="button"
-        onClick={() =>
-          handleFormChange("prerequisiteIds", [])
-        }
-        className="text-[10px] text-emerald-800 underline underline-offset-2"
-      >
-        Clear all
-      </button>
-    )}
-  </div>
-
-  <select
-    multiple
-    value={form.prerequisiteIds}
-    onChange={(e) =>
-      handleFormChange(
-        "prerequisiteIds",
-        Array.from(e.target.selectedOptions).map((o) => o.value)
-      )
-    }
-    className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 h-20"
-  >
-    {filteredPrereqOptions.map((p) => (
-      <option key={p.id} value={p.id}>
-        {p.label}
-      </option>
-    ))}
-  </select>
-
-  <p className="mt-1 text-[10px] text-emerald-800/80">
-    Select prerequisite courses if needed. Leave this list empty (or
-    use “Clear all” when editing) if the course has no prerequisites.
-    Students must pass all selected courses before registering to this
-    course.
-  </p>
-</div>
+              <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <label className="block font-semibold text-emerald-900 text-xs">
+                    Prerequisites (optional)
+                    {form.prerequisiteIds.length > 0 && (
+                      <span className="ml-2 font-normal text-emerald-700">
+                        ({form.prerequisiteIds.length} selected)
+                      </span>
+                    )}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="search"
+                      value={prereqQuery}
+                      onChange={(e) => setPrereqQuery(e.target.value)}
+                      className="w-56 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs"
+                      placeholder="Search prerequisite..."
+                    />
+                    {isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => handleFormChange("prerequisiteIds", [])}
+                        className="text-[10px] text-emerald-800 underline underline-offset-2"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="max-h-44 overflow-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {filteredPrereqSearchOptions.map((p) => {
+                    const checked = form.prerequisiteIds.includes(String(p.id));
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex items-start gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              handleFormChange("prerequisiteIds", [...form.prerequisiteIds, String(p.id)]);
+                            } else {
+                              handleFormChange(
+                                "prerequisiteIds",
+                                form.prerequisiteIds.filter((id) => id !== String(p.id))
+                              );
+                            }
+                          }}
+                        />
+                        <span className="text-slate-800">{p.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[10px] text-emerald-800/80">
+                  Select prerequisite courses if needed. Leave empty if none are required.
+                </p>
+              </div>
 
 
               {createError && (

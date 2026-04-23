@@ -7,7 +7,13 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
 } from "@heroicons/react/24/solid";
-import { fetchReviewerNewSyllabuses, fetchReviewerEditedSyllabuses } from "../../api/api";
+import FancySelect from "../../components/FancySelect";
+import {
+  fetchReviewerDepartmentCoursesByTerm,
+  fetchReviewerEditedSyllabuses,
+  fetchReviewerNewSyllabuses,
+  fetchTerms,
+} from "../../api/api";
 
 export default function ReviewerDashboard() {
   const navigate = useNavigate();
@@ -15,6 +21,9 @@ export default function ReviewerDashboard() {
   const [loadingCount, setLoadingCount] = useState(false);
   const [editedPendingCount, setEditedPendingCount] = useState(0);
   const [loadingEditedCount, setLoadingEditedCount] = useState(false);
+  const [terms, setTerms] = useState([]);
+  const [termId, setTermId] = useState("");
+  const [termCoursesCount, setTermCoursesCount] = useState(0);
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
@@ -49,6 +58,29 @@ export default function ReviewerDashboard() {
       .finally(() => setLoadingEditedCount(false));
   }, []);
 
+  useEffect(() => {
+    fetchTerms().then((data) => {
+      const list = Array.isArray(data) ? data : [];
+      setTerms(list);
+      const current = list.find((t) => t.is_current);
+      if (current) setTermId(String(current.id));
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!termId) return;
+    fetchReviewerDepartmentCoursesByTerm(termId)
+      .then((list) => setTermCoursesCount(Array.isArray(list) ? list.length : 0))
+      .catch(() => setTermCoursesCount(0));
+  }, [termId]);
+  const termOptions = [
+    { value: "", label: "Select term" },
+    ...terms.map((t) => ({
+      value: String(t.id),
+      label: `${t.academic_year} · ${t.semester}${t.is_current ? " (Current)" : ""}`,
+    })),
+  ];
+
   return (
     <div className="space-y-8">
       {/* Intro section */}
@@ -77,6 +109,20 @@ export default function ReviewerDashboard() {
       </section>
 
       {/* Main cards */}
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 flex items-center justify-between gap-3">
+        <div className="text-xs text-slate-700 font-medium">
+          Term filter for reviewer workflow
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-56">
+            <FancySelect value={termId} onChange={(v) => setTermId(String(v))} options={termOptions} />
+          </div>
+          <span className="text-xs text-indigo-700 font-semibold">
+            {termCoursesCount} dept courses in term
+          </span>
+        </div>
+      </div>
+
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* New Syllabuses card */}
         <button

@@ -237,6 +237,9 @@ export function StudentNavbar() {
           <NavLink to="/student/course-diagram" className={navClass}>
             Curriculum Diagram
           </NavLink>
+          <NavLink to="/student/next-semester-plan" className={navClass}>
+            Next Semester Plan
+          </NavLink>
           <NavLink to="/student/notifications" className={navClass}>
             Notifications
           </NavLink>

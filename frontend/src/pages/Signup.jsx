@@ -17,6 +17,7 @@ export default function Signup() {
     department: "",
     studyYear: "",
     semester: "",
+    degreeTrack: "BSC",
   });
 
   const [roles, setRoles] = useState([]);
@@ -42,6 +43,7 @@ export default function Signup() {
         updated.department = actualValue;
         updated.studyYear = "";
         updated.semester = "";
+        updated.degreeTrack = "BSC";
       }
 
       if (name === "role") {
@@ -120,6 +122,16 @@ export default function Signup() {
     setYearOptions(years);
   }, [form.department, departments]);
 
+  const degreeOptions = (() => {
+    const dept = departments.find((d) => String(d.id) === String(form.department));
+    if (!dept || dept.degree === "BSC") return [{ value: "BSC", label: "B.Sc." }];
+    if (dept.degree === "MSC") return [{ value: "MSC", label: "M.Sc." }];
+    return [
+      { value: "BSC", label: "B.Sc." },
+      { value: "MSC", label: "M.Sc." },
+    ];
+  })();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -134,6 +146,7 @@ export default function Signup() {
     const department = form.department;
     const studyYear = form.studyYear;
     const semester = form.semester;
+    const degreeTrack = form.degreeTrack;
     const idNumber = (form.idNumber || "").trim();
 
     const nameRegex = /^[A-Za-z]+$/;
@@ -157,6 +170,11 @@ export default function Signup() {
       if (!studyYear || !semester) {
         setLoading(false);
         setError("Academic year and semester are required for students.");
+        return;
+      }
+      if (!degreeTrack) {
+        setLoading(false);
+        setError("Degree track is required for students.");
         return;
       }
     }
@@ -202,6 +220,7 @@ export default function Signup() {
         department,
         studyYear,
         semester,
+        degreeTrack,
       });
 
       navigate(`/verify-email?email=${encodeURIComponent(email)}`);
@@ -388,6 +407,12 @@ export default function Signup() {
 
                 {form.role === "STUDENT" && (
                   <>
+                    <CustomSelect
+                      label="Degree Track"
+                      value={form.degreeTrack}
+                      onChange={(val) => handleChange("degreeTrack", val)}
+                      options={degreeOptions}
+                    />
                     <CustomSelect
                       label="Academic year (study level)"
                       value={form.studyYear}

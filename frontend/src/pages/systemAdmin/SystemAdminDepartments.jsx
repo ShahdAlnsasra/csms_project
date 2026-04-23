@@ -701,11 +701,11 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BuildingOfficeIcon } from "@heroicons/react/24/outline";
 import { fetchDepartments, createDepartment } from "../../api/api";
+import FancySelect from "../../components/FancySelect";
 
 // ✅ Degree options that match the Django model choices (BSC / MSC / BOTH)
 const DEGREE_OPTIONS = [
   { value: "BSC", label: "First degree (BSc)" },
-  { value: "MSC", label: "Second degree (MSc)" },
   { value: "BOTH", label: "First & Second degree (BSc + MSc)" },
 ];
 
@@ -720,6 +720,10 @@ export default function SystemAdminDepartments() {
     degreeType: "BSC", // ✅ default matches backend ("BSC")
     years_of_study: 4,
     semesters_per_year: 2,
+    bsc_required_credits: 120,
+    msc_required_credits: 36,
+    bsc_max_counted_elective_credits: 7,
+    msc_max_counted_elective_credits: 7,
     description: "",
   });
 
@@ -818,6 +822,10 @@ export default function SystemAdminDepartments() {
       degree: form.degreeType,
       years_of_study: years,
       semesters_per_year: sems,
+      bsc_required_credits: Number(form.bsc_required_credits || 120),
+      msc_required_credits: Number(form.msc_required_credits || 36),
+      bsc_max_counted_elective_credits: Number(form.bsc_max_counted_elective_credits || 7),
+      msc_max_counted_elective_credits: Number(form.msc_max_counted_elective_credits || 7),
       description: form.description.trim(),
       // we are NOT sending admin_user_id here – it's optional in your view
     };
@@ -976,18 +984,11 @@ export default function SystemAdminDepartments() {
               <label className="block text-xs font-medium text-slate-600 mb-1">
                 Degree Type
               </label>
-              <select
-                name="degreeType"
+              <FancySelect
                 value={form.degreeType}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                {DEGREE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, degreeType: String(v) }))}
+                options={DEGREE_OPTIONS}
+              />
               <p className="mt-1 text-[11px] text-slate-400">
                 Choose whether this department is first degree, second degree, or
                 both.
@@ -1038,6 +1039,61 @@ export default function SystemAdminDepartments() {
                   {fieldErrors.semesters_per_year}
                 </p>
               )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                B.Sc. required credits
+              </label>
+              <input
+                name="bsc_required_credits"
+                type="number"
+                min="1"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                value={form.bsc_required_credits}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                M.Sc. required credits
+              </label>
+              <input
+                name="msc_required_credits"
+                type="number"
+                min="1"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                value={form.msc_required_credits}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                B.Sc. max counted elective credits
+              </label>
+              <input
+                name="bsc_max_counted_elective_credits"
+                type="number"
+                min="0"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                value={form.bsc_max_counted_elective_credits}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                M.Sc. max counted elective credits
+              </label>
+              <input
+                name="msc_max_counted_elective_credits"
+                type="number"
+                min="0"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                value={form.msc_max_counted_elective_credits}
+                onChange={handleChange}
+              />
             </div>
           </div>
 

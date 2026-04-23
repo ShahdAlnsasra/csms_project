@@ -5,7 +5,17 @@ from django.utils import timezone
 
 # backend/api/serializers.py
 from rest_framework import serializers
-from .models import Department, SignupRequest, User , Course
+from .models import (
+    Department,
+    SignupRequest,
+    User,
+    Course,
+    AcademicTerm,
+    CourseOffering,
+    StudentSemesterPlan,
+    StudentPlannedCourse,
+)
+from .academic_term_utils import get_current_term
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -22,6 +32,10 @@ class DepartmentSerializer(serializers.ModelSerializer):
             'years_of_study',
             'semesters_per_year',
             'description',
+            "bsc_required_credits",
+            "msc_required_credits",
+            "bsc_max_counted_elective_credits",
+            "msc_max_counted_elective_credits",
             'department_admin_name',
             'department_admin_email',
         ]
@@ -78,6 +92,7 @@ class SignupRequestSerializer(serializers.ModelSerializer):
             "email_verified",
             "study_year",
             "student_semester",
+            "degree_track",
             "major",
             "id_number",
         ]
@@ -108,15 +123,6 @@ from .models import Course, User, Syllabus
 
 
 class CourseSerializer(serializers.ModelSerializer):
-    # ---------- write-only helpers ----------
-    lecturer_ids = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=User.objects.filter(role="LECTURER", status="APPROVED"),
-        write_only=True,
-        source="lecturers",
-        required=False,
-    )
-
     prerequisite_ids = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=Course.objects.all(),
@@ -141,8 +147,8 @@ class CourseSerializer(serializers.ModelSerializer):
             "credits",
             "year",
             "semester",
-            # write-only ids:
-            "lecturer_ids",
+            "degree_track",
+            "planning_type",
             "prerequisite_ids",
             # read-only display:
             "lecturers_display",
@@ -152,28 +158,22 @@ class CourseSerializer(serializers.ModelSerializer):
 
     # ---------- create / update ----------
     def create(self, validated_data):
-        lecturers = validated_data.pop("lecturers", [])
         prerequisites = validated_data.pop("prerequisites", [])
 
         course = Course.objects.create(**validated_data)
 
-        if lecturers:
-            course.lecturers.set(lecturers)
         if prerequisites:
             course.prerequisites.set(prerequisites)
 
         return course
 
     def update(self, instance, validated_data):
-        lecturers = validated_data.pop("lecturers", None)
         prerequisites = validated_data.pop("prerequisites", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        if lecturers is not None:
-            instance.lecturers.set(lecturers)
         if prerequisites is not None:
             instance.prerequisites.set(prerequisites)
 
@@ -181,8 +181,19 @@ class CourseSerializer(serializers.ModelSerializer):
 
     # ---------- display helpers ----------
     def get_lecturers_display(self, obj):
+        """Lecturers assigned on the current academic term offering (if any)."""
+        term = get_current_term()
+        if not term:
+            return []
+        off = (
+            CourseOffering.objects.filter(course=obj, term=term)
+            .prefetch_related("lecturers")
+            .first()
+        )
+        if not off:
+            return []
         result = []
-        for u in obj.lecturers.all():
+        for u in off.lecturers.all():
             full_name = f"{u.first_name} {u.last_name}".strip() or u.email
             result.append(
                 {
@@ -441,3 +452,100 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     def get_course_name(self, obj):
         return obj.course.name if obj.course_id else None
+
+
+class AcademicTermSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AcademicTerm
+        fields = ["id", "academic_year", "semester", "is_current"]
+
+
+class CourseOfferingSerializer(serializers.ModelSerializer):
+    lecturer_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        write_only=True,
+        source="lecturers",
+        queryset=User.objects.filter(role="LECTURER", status="APPROVED"),
+        required=False,
+    )
+    lecturers_display = LecturerMiniSerializer(source="lecturers", many=True, read_only=True)
+    course_name = serializers.CharField(source="course.name", read_only=True)
+    course_code = serializers.CharField(source="course.code", read_only=True)
+    term_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseOffering
+        fields = [
+            "id",
+            "course",
+            "course_name",
+            "course_code",
+            "term",
+            "term_display",
+            "department",
+            "lecturer_ids",
+            "lecturers_display",
+            "student_edit_start",
+            "student_edit_end",
+        ]
+
+    def get_term_display(self, obj):
+        return f"{obj.term.academic_year} · {obj.term.semester}"
+
+    def create(self, validated_data):
+        lecturers = validated_data.pop("lecturers", [])
+        offering = CourseOffering.objects.create(**validated_data)
+        if lecturers:
+            offering.lecturers.set(lecturers)
+        return offering
+
+    def update(self, instance, validated_data):
+        lecturers = validated_data.pop("lecturers", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lecturers is not None:
+            instance.lecturers.set(lecturers)
+        return instance
+
+
+class StudentPlannedCourseSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True)
+    course_code = serializers.CharField(source="course.code", read_only=True)
+    credits = serializers.DecimalField(
+        source="course.credits", max_digits=3, decimal_places=1, read_only=True
+    )
+
+    class Meta:
+        model = StudentPlannedCourse
+        fields = [
+            "id",
+            "course",
+            "course_name",
+            "course_code",
+            "credits",
+            "selection_type",
+            "counts_toward_degree_elective",
+        ]
+
+
+class StudentSemesterPlanSerializer(serializers.ModelSerializer):
+    planned_courses = StudentPlannedCourseSerializer(many=True, read_only=True)
+    term_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StudentSemesterPlan
+        fields = [
+            "id",
+            "student",
+            "term",
+            "term_display",
+            "degree_track",
+            "status",
+            "submitted_at",
+            "planned_courses",
+        ]
+        read_only_fields = ["status", "submitted_at"]
+
+    def get_term_display(self, obj):
+        return f"{obj.term.academic_year} · {obj.term.semester}"

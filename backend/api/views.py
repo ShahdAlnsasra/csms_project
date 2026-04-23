@@ -168,6 +168,7 @@ def login_view(request):
             "department_name": user.department.name if user.department else None,
             "study_year": user.study_year,
             "student_semester": user.student_semester,
+            "degree_track": user.degree_track,
             "major": user.major or "",
         },
         status=status.HTTP_200_OK,
@@ -189,6 +190,7 @@ def signup_request_create(request):
     department_id = data.get("department")
     study_year = data.get("study_year")
     semester = data.get("semester")
+    degree_track = (data.get("degree_track") or "").strip().upper()
     id_number = (data.get("id_number") or "").strip()
     major = (data.get("major") or "").strip()
     password = (data.get("password") or "").strip()
@@ -404,6 +406,16 @@ def signup_request_create(request):
                 {"detail": "study_year and semester are required for students."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if degree_track not in {"BSC", "MSC"}:
+            return Response(
+                {"detail": "degree_track must be BSC or MSC for students."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if degree_track == "MSC" and dept_obj.degree == "BSC":
+            return Response(
+                {"detail": "Selected department does not support MSc track."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
     if role == "STUDENT":
         try:
@@ -420,6 +432,7 @@ def signup_request_create(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         signup.student_semester = sem_str
+        signup.degree_track = degree_track
 
     signup.save()
 
@@ -1193,6 +1206,7 @@ class DepartmentAdminRequestDecision(APIView):
                 department=signup.department,   # same department
                 study_year=signup.study_year if signup.role == "STUDENT" else None,
                 student_semester=signup.student_semester if signup.role == "STUDENT" else None,
+                degree_track=signup.degree_track if signup.role == "STUDENT" else None,
                 major=(signup.major or "") if signup.role == "STUDENT" else "",
                 status="APPROVED",
             )
@@ -1486,6 +1500,8 @@ class DepartmentAdminCoursesView(APIView):
     def get(self, request):
         dept_id = request.query_params.get("department_id")
         year = request.query_params.get("year")
+        degree_track = request.query_params.get("degree_track")
+        planning_type = request.query_params.get("planning_type")
 
         if not dept_id:
             return Response(
@@ -1538,6 +1554,8 @@ class DepartmentAdminCourseListCreate(APIView):
     def get(self, request):
         dept_id = request.query_params.get("department_id")
         year = request.query_params.get("year")
+        degree_track = request.query_params.get("degree_track")
+        planning_type = request.query_params.get("planning_type")
 
         if not dept_id:
             return Response(
@@ -1556,6 +1574,14 @@ class DepartmentAdminCourseListCreate(APIView):
                     {"detail": "year must be an integer."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        if degree_track in {"BSC", "MSC", "BOTH"}:
+            if degree_track == "BOTH":
+                qs = qs.filter(degree_track="BOTH")
+            else:
+                qs = qs.filter(degree_track__in=[degree_track, "BOTH"])
+        if planning_type in {"MANDATORY", "ELECTIVE"}:
+            qs = qs.filter(planning_type=planning_type)
 
         qs = qs.order_by("year", "semester", "code")
         serializer = CourseSerializer(qs, many=True)
@@ -1861,17 +1887,41 @@ class CourseAIInsightsView(APIView):
 @api_view(["GET"])
 def lecturer_courses(request):
     """
-    GET /api/lecturer/courses/?lecturer_id=...&department_id=...&year=...
-    מחזיר את הקורסים של המרצה כולל סטטוס הסילבוס האחרון שהמרצה העלה.
+    GET /api/lecturer/courses/?lecturer_id=...&department_id=...&year=...&term_id=...
+    Courses are derived from term offerings (lecturer assignments). Defaults to current term when term_id omitted.
     """
+    from .academic_term_utils import get_current_term
+    from .models import CourseOffering
+
     lecturer_id = request.query_params.get("lecturer_id")
     department_id = request.query_params.get("department_id")
     year = request.query_params.get("year")
+    term_id = request.query_params.get("term_id")
 
     if not lecturer_id:
         return Response({"detail": "lecturer_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    qs = Course.objects.filter(lecturers__id=lecturer_id)
+    offering_qs = CourseOffering.objects.filter(lecturers__id=lecturer_id)
+    if department_id:
+        offering_qs = offering_qs.filter(department_id=department_id)
+
+    if term_id:
+        try:
+            offering_qs = offering_qs.filter(term_id=int(term_id))
+        except ValueError:
+            return Response({"detail": "term_id must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        ct = get_current_term()
+        if ct:
+            offering_qs = offering_qs.filter(term_id=ct.id)
+        else:
+            return Response([])
+
+    course_ids = list(offering_qs.values_list("course_id", flat=True).distinct())
+    if not course_ids:
+        return Response([])
+
+    qs = Course.objects.filter(id__in=course_ids)
     if department_id:
         qs = qs.filter(department_id=department_id)
 

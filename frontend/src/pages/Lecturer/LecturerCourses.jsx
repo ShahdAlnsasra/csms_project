@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AcademicCapIcon,
@@ -9,29 +9,64 @@ import {
   FunnelIcon,
   ClockIcon,
 } from "@heroicons/react/24/solid";
-import { fetchLecturerCourses, fetchYears } from "../../api/api";
+import FancySelect from "../../components/FancySelect";
+import {
+  fetchLecturerCourses,
+  fetchLecturerOfferings,
+  fetchTerms,
+  fetchYears,
+} from "../../api/api";
 
 export default function LecturerCourses() {
   const [search, setSearch] = useState("");
   const [year, setYear] = useState("all");
   const [years, setYears] = useState([]);
   const [courses, setCourses] = useState([]);
+  const [terms, setTerms] = useState([]);
+  const [termId, setTermId] = useState("");
+  const [offeringCourses, setOfferingCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const loadCourses = useCallback((user, tid) => {
+    setLoading(true);
+    const params = {
+      lecturerId: user.id,
+      departmentId: user.department,
+    };
+    if (tid) params.termId = tid;
+    fetchLecturerCourses(params)
+      .then((data) => setCourses(data || []))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
     if (!user) return;
 
     fetchYears(user.department).then((y) => setYears(y || []));
-    setLoading(true);
-    fetchLecturerCourses({
-      lecturerId: user.id,
-      departmentId: user.department,
-    })
-      .then((data) => setCourses(data || []))
-      .finally(() => setLoading(false));
+    fetchTerms().then((t) => {
+      const list = Array.isArray(t) ? t : [];
+      setTerms(list);
+      const current = list.find((x) => x.is_current);
+      const tid = current ? String(current.id) : list[0] ? String(list[0].id) : "";
+      if (tid) setTermId(tid);
+    });
   }, []);
+
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("csmsUser") || "null");
+    if (!user || !termId) return;
+    loadCourses(user, termId);
+    fetchLecturerOfferings(termId).then((list) => {
+      const mapped = (list || []).map((o) => ({
+        id: o.course,
+        name: o.course_name,
+        code: o.course_code,
+      }));
+      setOfferingCourses(mapped);
+    });
+  }, [termId, loadCourses]);
 
   const filtered = useMemo(
     () =>
@@ -44,6 +79,16 @@ export default function LecturerCourses() {
       }),
     [courses, search, year]
   );
+  const yearOptions = [
+    { value: "all", label: "Year" },
+    ...years.map((y) => ({ value: String(y), label: `Year ${y}` })),
+  ];
+  const shortTerms = useMemo(() => (Array.isArray(terms) ? terms.slice(0, 10) : []), [terms]);
+
+  const termOptions = shortTerms.map((t) => ({
+    value: String(t.id),
+    label: `${t.academic_year} · ${t.semester}${t.is_current ? " (Current)" : ""}`,
+  }));
 
   const statusBadge = (course) => {
     if (course.latest_syllabus) {
@@ -103,8 +148,8 @@ export default function LecturerCourses() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 md:p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1.2fr,0.5fr] gap-3">
-          <div className="relative">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_minmax(0,11rem)] gap-3 items-end">
+          <div className="relative min-w-0">
             <MagnifyingGlassIcon className="h-5 w-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -114,24 +159,54 @@ export default function LecturerCourses() {
               className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-3 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 outline-none"
             />
           </div>
-          <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2.5 bg-slate-50/60">
-            <FunnelIcon className="h-5 w-5 text-slate-400" />
-            <select
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="bg-transparent text-sm text-slate-800 flex-1 outline-none"
-            >
-              <option value="all">Year</option>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-2 py-1.5 bg-slate-50/60 min-w-0">
+            <FunnelIcon className="h-4 w-4 text-slate-400 shrink-0 hidden sm:block" />
+            <div className="min-w-0 flex-1">
+              <FancySelect
+                value={year}
+                onChange={(v) => setYear(String(v))}
+                options={yearOptions}
+                compact
+                placeholder="Catalog year"
+              />
+            </div>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 shrink-0">
+            <ClockIcon className="h-4 w-4 text-indigo-500" />
+            Term
+          </div>
+          <div className="w-full sm:w-64 md:w-72 max-w-full min-w-0">
+            <FancySelect
+              value={termId}
+              onChange={(v) => setTermId(String(v))}
+              options={termOptions}
+              placeholder="Academic term"
+              compact
+              optionsMaxHeightClass="max-h-56"
+            />
+          </div>
+          <p className="text-[11px] text-slate-500 w-full sm:w-auto sm:flex-1 sm:min-w-[12rem]">
+            Lists courses you are assigned to for this term (department offerings). Shorter list — change
+            term to see other semesters.
+          </p>
+        </div>
 
-        <div className="grid gap-3">
+        {offeringCourses.length > 0 && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+            <p className="text-xs font-semibold text-indigo-700 mb-2">Assigned in selected term</p>
+            <div className="flex flex-wrap gap-2">
+              {offeringCourses.map((c) => (
+                <span key={`o-${c.id}`} className="rounded-full bg-white border border-indigo-200 px-2.5 py-1 text-xs text-slate-700">
+                  {c.code} · {c.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-3 max-h-[22rem] overflow-y-auto pr-1">
           {filtered.map((course) => (
             <button
               key={course.id}

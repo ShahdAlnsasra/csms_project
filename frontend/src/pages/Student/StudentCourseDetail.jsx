@@ -147,14 +147,12 @@ export default function StudentCourseDetail() {
   }
 
   const syllabus = detail?.latest_syllabus;
-  const lecturerName =
-    detail?.lecturer_name ||
-    (course.lecturers_display && course.lecturers_display[0]?.full_name) ||
-    null;
-  const lecturerEmail =
-    detail?.lecturer_email ||
-    (course.lecturers_display && course.lecturers_display[0]?.email) ||
-    null;
+  const lecturerContacts =
+    (Array.isArray(detail?.lecturer_contacts) && detail.lecturer_contacts.length > 0
+      ? detail.lecturer_contacts
+      : Array.isArray(course.lecturers_display)
+      ? course.lecturers_display
+      : []) || [];
 
   const prereqSummary =
     prerequisites.length > 0
@@ -224,23 +222,31 @@ export default function StudentCourseDetail() {
           <div className="border-t border-indigo-100 pt-4 space-y-3 text-sm">
             <div className="flex items-start gap-2 text-slate-800">
               <GraduationCap className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
-              <div>
-                <span className="font-semibold">Lecturer: </span>
-                {lecturerName || "—"}
+              <div className="w-full">
+                <span className="font-semibold">Lecturers:</span>
+                {lecturerContacts.length === 0 ? (
+                  <span className="ml-1">—</span>
+                ) : (
+                  <div className="mt-1 space-y-1">
+                    {lecturerContacts.map((lec, idx) => (
+                      <div key={`${lec.id || lec.email || idx}`} className="text-sm text-slate-800">
+                        <span className="font-medium">{lec.full_name || "—"}</span>
+                        {lec.email ? (
+                          <>
+                            {" · "}
+                            <a
+                              href={`mailto:${lec.email}`}
+                              className="text-indigo-600 hover:underline break-all"
+                            >
+                              {lec.email}
+                            </a>
+                          </>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-            <div className="flex items-start gap-2 text-slate-800">
-              <span className="font-semibold shrink-0">Email: </span>
-              {lecturerEmail ? (
-                <a
-                  href={`mailto:${lecturerEmail}`}
-                  className="text-indigo-600 hover:underline break-all"
-                >
-                  {lecturerEmail}
-                </a>
-              ) : (
-                "—"
-              )}
             </div>
             {syllabus && (
               <div className="rounded-2xl bg-white/80 border border-indigo-100 px-4 py-3 text-xs text-slate-700">

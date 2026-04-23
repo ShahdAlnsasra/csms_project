@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight } from "lucide-react";
-import { fetchStudentMyCourses } from "../../api/api";
+import { fetchStudentMyCourses, fetchStudentNextTermCourses } from "../../api/api";
 
 export default function StudentMyCourses() {
   const navigate = useNavigate();
@@ -9,6 +9,7 @@ export default function StudentMyCourses() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const [nextTermCourses, setNextTermCourses] = useState([]);
 
   useEffect(() => {
     async function load() {
@@ -17,6 +18,8 @@ export default function StudentMyCourses() {
         setError("");
         const data = await fetchStudentMyCourses();
         setCourses(Array.isArray(data) ? data : []);
+        const nextData = await fetchStudentNextTermCourses();
+        setNextTermCourses(Array.isArray(nextData) ? nextData : []);
       } catch (e) {
         console.error(e);
         setError("Could not load your courses.");
@@ -111,6 +114,32 @@ export default function StudentMyCourses() {
           ))}
         </div>
       )}
+
+      <div className="pt-4 border-t border-slate-200">
+        <h2 className="text-lg font-bold text-slate-900">Next Semester Courses</h2>
+        <p className="text-xs text-slate-600 mt-1 mb-3">
+          Courses from your submitted next-semester plan.
+        </p>
+        {nextTermCourses.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+            No next-semester courses yet. Complete your next-semester plan to see them here.
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {nextTermCourses.map((c) => (
+              <button
+                key={`next-${c.id}`}
+                type="button"
+                onClick={() => navigate(`/student/courses/${c.id}`)}
+                className="rounded-2xl border border-indigo-100 bg-indigo-50/40 hover:bg-indigo-50 px-4 py-3 text-left transition"
+              >
+                <p className="text-[11px] font-semibold text-indigo-600 uppercase">{c.code}</p>
+                <p className="text-sm font-semibold text-slate-900">{c.name}</p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

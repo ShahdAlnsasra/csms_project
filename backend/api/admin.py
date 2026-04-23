@@ -18,7 +18,7 @@ class CourseAdmin(admin.ModelAdmin):
     list_display = ("id", "code", "name", "department", "year", "semester", "credits")
     search_fields = ("code", "name", "department__name")
     list_filter = ("department", "year", "semester")
-    filter_horizontal = ("lecturers", "prerequisites")  # מאוד עוזר ב-Admin
+    filter_horizontal = ("prerequisites",)  # מאוד עוזר ב-Admin
 
 class SyllabusWeekInline(admin.TabularInline):
     model = SyllabusWeek

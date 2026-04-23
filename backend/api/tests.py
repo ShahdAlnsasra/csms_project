@@ -7,7 +7,15 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from .models import Department, Course, Syllabus, SignupRequest, MagicLink
+from .models import (
+    AcademicTerm,
+    Course,
+    CourseOffering,
+    Department,
+    MagicLink,
+    SignupRequest,
+    Syllabus,
+)
 from django.utils import timezone
 from datetime import timedelta
 import json
@@ -90,13 +98,14 @@ class CourseModelTest(TestCase):
                 department=self.dept
             )
     
-    def test_course_lecturers(self):
-        """Test course can have multiple lecturers"""
+    def test_course_offering_lecturers(self):
+        """Lecturers are assigned per course offering (term), not on Course."""
         course = Course.objects.create(
             name="Test Course",
             code="CS102",
-            department=self.dept
+            department=self.dept,
         )
+        term = AcademicTerm.objects.create(academic_year="2025-2026", semester="A")
         lecturer2 = User.objects.create_user(
             email="lecturer2@test.com",
             password="testpass123",
@@ -104,10 +113,11 @@ class CourseModelTest(TestCase):
             last_name="Smith",
             role="LECTURER",
             department=self.dept,
-            status="APPROVED"
+            status="APPROVED",
         )
-        course.lecturers.add(self.lecturer, lecturer2)
-        self.assertEqual(course.lecturers.count(), 2)
+        off = CourseOffering.objects.create(course=course, term=term, department=self.dept)
+        off.lecturers.add(self.lecturer, lecturer2)
+        self.assertEqual(off.lecturers.count(), 2)
 
 
 class UserModelTest(TestCase):

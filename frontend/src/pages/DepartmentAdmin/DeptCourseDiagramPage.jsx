@@ -402,6 +402,7 @@ export default function DeptCourseDiagramPage() {
   const [departmentId, setDepartmentId] = useState(null);
   const [department, setDepartment] = useState(null);
   const [courses, setCourses] = useState([]);
+  const [selectedDegree, setSelectedDegree] = useState("BSC");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -430,6 +431,12 @@ export default function DeptCourseDiagramPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!department) return;
+    if (department.degree === "MSC") setSelectedDegree("MSC");
+    else if (department.degree === "BSC") setSelectedDegree("BSC");
+  }, [department]);
+
   // load department + all courses (omitted for brevity)
   useEffect(() => {
     if (!departmentId) return;
@@ -442,7 +449,12 @@ export default function DeptCourseDiagramPage() {
         const dept = await fetchDepartmentDetail(departmentId);
         setDepartment(dept);
 
-        const list = await fetchDeptCourses({ departmentId });
+        const degreeTrack =
+          dept?.degree === "BOTH" ? selectedDegree : dept?.degree;
+        const list = await fetchDeptCourses({
+          departmentId,
+          degreeTrack: degreeTrack || undefined,
+        });
         setCourses(list || []);
       } catch (err) {
         console.error("Failed to load courses for diagram:", err);
@@ -453,7 +465,7 @@ export default function DeptCourseDiagramPage() {
     }
 
     loadAll();
-  }, [departmentId]);
+  }, [departmentId, selectedDegree]);
 
   const handleCourseClick = (course) => {
     // go to dedicated course-details page
@@ -526,6 +538,32 @@ export default function DeptCourseDiagramPage() {
                 {department.years_of_study} years ·{" "}
                 {department.semesters_per_year} semesters/year
               </div>
+            </div>
+          )}
+          {department?.degree === "BOTH" && (
+            <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs font-medium shadow-inner">
+              <button
+                type="button"
+                onClick={() => setSelectedDegree("BSC")}
+                className={`px-4 py-1.5 rounded-full transition font-semibold ${
+                  selectedDegree === "BSC"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/70"
+                    : "text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                B.Sc.
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDegree("MSC")}
+                className={`px-4 py-1.5 rounded-full transition font-semibold ${
+                  selectedDegree === "MSC"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/70"
+                    : "text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                M.Sc.
+              </button>
             </div>
           )}
         </div>

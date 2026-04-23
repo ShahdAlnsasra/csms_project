@@ -5,6 +5,7 @@ from io import BytesIO
 
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -16,7 +17,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
-from .models import Course, Notification, Syllabus
+from .models import Course, CourseOffering, Notification, Syllabus
+from .academic_term_utils import SEM_ORDER, get_current_term
 from .serializers import (
     CourseSerializer,
     DepartmentSerializer,
@@ -173,13 +175,23 @@ def student_my_courses(request):
     if err:
         return err
 
-    qs = Course.objects.filter(department_id=user.department_id)
-    if user.study_year is not None:
-        qs = qs.filter(year=user.study_year)
-    if user.student_semester:
-        qs = qs.filter(semester=user.student_semester)
-    qs = qs.order_by("year", "semester", "code")
-    return Response(CourseSerializer(qs, many=True).data)
+    term = get_current_term()
+    if not term:
+        return Response([])
+    offerings = CourseOffering.objects.filter(
+        department_id=user.department_id,
+        term=term,
+    ).select_related("course")
+    courses = []
+    for off in offerings:
+        c = off.course
+        if user.degree_track and c.degree_track not in [user.degree_track, "BOTH"]:
+            continue
+        if user.study_year is not None and c.year != user.study_year:
+            continue
+        courses.append(c)
+    courses = sorted({c.id: c for c in courses}.values(), key=lambda x: (x.year, x.code))
+    return Response(CourseSerializer(courses, many=True).data)
 
 
 @api_view(["GET"])
@@ -192,6 +204,7 @@ def student_department_courses(request):
 
     qs = (
         Course.objects.filter(department_id=user.department_id)
+        .filter(degree_track__in=[user.degree_track, "BOTH"] if user.degree_track else ["BSC", "MSC", "BOTH"])
         .order_by("year", "semester", "code")
     )
     return Response(CourseSerializer(qs, many=True).data)
@@ -204,12 +217,54 @@ def student_course_detail(request, course_id):
     if err:
         return err
 
-    course = Course.objects.filter(pk=course_id, department_id=user.department_id).first()
+    course_qs = Course.objects.filter(pk=course_id, department_id=user.department_id)
+    if user.degree_track:
+        course_qs = course_qs.filter(degree_track__in=[user.degree_track, "BOTH"])
+    course = course_qs.first()
     if not course:
         return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
 
     syllabus = _latest_approved_syllabus(course)
-    primary_lecturer = course.lecturers.first()
+    primary_lecturer = None
+
+    current = get_current_term()
+    preferred_terms = []
+    if current:
+        preferred_terms.append(current)
+        idx = SEM_ORDER.index(current.semester)
+        if idx < len(SEM_ORDER) - 1:
+            next_sem = SEM_ORDER[idx + 1]
+            next_year = current.academic_year
+        else:
+            next_sem = "A"
+            start, end = current.academic_year.split("-")
+            next_year = f"{int(start) + 1}-{int(end) + 1}"
+        from .models import AcademicTerm
+
+        next_term = AcademicTerm.objects.filter(academic_year=next_year, semester=next_sem).first()
+        if next_term:
+            preferred_terms.append(next_term)
+
+    off = None
+    for t in preferred_terms:
+        off = CourseOffering.objects.filter(course=course, term=t).prefetch_related("lecturers").first()
+        if off and off.lecturers.exists():
+            break
+        off = None
+    if not off:
+        # Fallback: any available offering for this course (latest updated first)
+        off = (
+            CourseOffering.objects.filter(course=course)
+            .prefetch_related("lecturers")
+            .order_by("-updated_at")
+            .first()
+        )
+    lecturer_contacts = []
+    if off:
+        for lec in off.lecturers.all():
+            full_name = f"{lec.first_name} {lec.last_name}".strip() or lec.email
+            lecturer_contacts.append({"id": lec.id, "full_name": full_name, "email": lec.email})
+        primary_lecturer = off.lecturers.first()
     lec_name = (
         f"{primary_lecturer.first_name} {primary_lecturer.last_name}".strip()
         if primary_lecturer
@@ -222,6 +277,7 @@ def student_course_detail(request, course_id):
             "course": CourseSerializer(course).data,
             "lecturer_name": lec_name,
             "lecturer_email": lec_email,
+            "lecturer_contacts": lecturer_contacts,
             "latest_syllabus": SyllabusSerializer(syllabus).data if syllabus else None,
         }
     )
@@ -284,8 +340,6 @@ def student_notification_mark_read(request, notification_id):
     if err:
         return err
 
-    from django.utils import timezone
-
     n = get_object_or_404(Notification, pk=notification_id, recipient=user)
     if not n.read_at:
         n.read_at = timezone.now()
@@ -302,3 +356,14 @@ def student_notification_unread_count(request):
 
     n = Notification.objects.filter(recipient=user, read_at__isnull=True).count()
     return Response({"unread": n})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def student_notifications_mark_all_read(request):
+    user, err = _student_user(request)
+    if err:
+        return err
+    now = timezone.now()
+    updated = Notification.objects.filter(recipient=user, read_at__isnull=True).update(read_at=now)
+    return Response({"detail": "All marked as read.", "updated": updated})
