@@ -23,6 +23,7 @@ import {
   PlusCircle,
   Pencil,
   Trash2,
+  Brain,
 } from "lucide-react";
 import FancySelect from "../../components/FancySelect";
 
@@ -35,6 +36,7 @@ export default function DepartmentAdminCourses() {
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
+  const [selectedDegreeTrack, setSelectedDegreeTrack] = useState("BSC");
 
   const [courses, setCourses] = useState([]); // courses of selectedYear
   const [coursesLoading, setCoursesLoading] = useState(false);
@@ -98,17 +100,34 @@ export default function DepartmentAdminCourses() {
         const dept = await fetchDepartmentDetail(departmentId);
         setDepartment(dept);
 
-        const totalYears = dept?.years_of_study || 4;
+        const totalYears = Math.max(1, Number(dept?.years_of_study || 4));
         const yrs = Array.from({ length: totalYears }, (_, i) => i + 1);
         setYears(yrs);
-        if (!selectedYear) setSelectedYear(yrs[0]);
       } catch (err) {
         console.error("Failed to load department detail:", err);
       }
     }
 
     loadDept();
-  }, [departmentId, selectedYear]);
+  }, [departmentId]);
+
+  const visibleYears = useMemo(() => {
+    if (!years.length) return [];
+    if (selectedDegreeTrack === "MSC") {
+      return years.filter((y) => y <= 2);
+    }
+    return years;
+  }, [years, selectedDegreeTrack]);
+
+  useEffect(() => {
+    if (!visibleYears.length) {
+      setSelectedYear(null);
+      return;
+    }
+    if (!selectedYear || !visibleYears.includes(selectedYear)) {
+      setSelectedYear(visibleYears[0]);
+    }
+  }, [visibleYears, selectedYear]);
 
   // helper: reset form
   const resetForm = () => {
@@ -117,7 +136,7 @@ export default function DepartmentAdminCourses() {
       code: "",
       description: "",
       credits: "3.0",
-      degreeTrack: "BSC",
+      degreeTrack: selectedDegreeTrack,
       planningType: "MANDATORY",
       prerequisiteIds: [],
     });
@@ -142,6 +161,7 @@ export default function DepartmentAdminCourses() {
       const data = await fetchDeptCourses({
         departmentId,
         year: selectedYear,
+        degreeTrack: selectedDegreeTrack,
       });
       setCourses(data || []);
     } catch (err) {
@@ -150,7 +170,7 @@ export default function DepartmentAdminCourses() {
     } finally {
       setCoursesLoading(false);
     }
-  }, [departmentId, selectedYear]);
+  }, [departmentId, selectedYear, selectedDegreeTrack]);
 
   useEffect(() => {
     loadYearCourses();
@@ -162,7 +182,10 @@ export default function DepartmentAdminCourses() {
 
     async function loadAll() {
       try {
-        const data = await fetchDeptCourses({ departmentId }); // no year => all
+        const data = await fetchDeptCourses({
+          departmentId,
+          degreeTrack: selectedDegreeTrack,
+        }); // no year => all (for current track)
         setAllCourses(data || []);
       } catch (err) {
         console.error("Failed to load all courses for prerequisites:", err);
@@ -170,7 +193,11 @@ export default function DepartmentAdminCourses() {
     }
 
     loadAll();
-  }, [departmentId]);
+  }, [departmentId, selectedDegreeTrack]);
+
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, degreeTrack: selectedDegreeTrack }));
+  }, [selectedDegreeTrack]);
 
   // map of courseId -> course (for displaying prerequisite labels)
   const courseById = useMemo(() => {
@@ -246,6 +273,10 @@ export default function DepartmentAdminCourses() {
     { value: "MANDATORY", label: "Mandatory" },
     { value: "ELECTIVE", label: "Elective" },
   ];
+  const isMscSelected = selectedDegreeTrack === "MSC";
+  const displayedYearsOfStudy = isMscSelected
+    ? Math.min(2, Number(department?.years_of_study || 2))
+    : Number(department?.years_of_study || 4);
 
   // start editing selected course
   const startEditCourse = () => {
@@ -429,7 +460,11 @@ export default function DepartmentAdminCourses() {
           </button>
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-              <Layers3 className="h-7 w-7 text-emerald-600" />
+              {isMscSelected ? (
+                <Brain className="h-7 w-7 text-violet-600" />
+              ) : (
+                <Layers3 className="h-7 w-7 text-emerald-600" />
+              )}
               Department Academic Structure
             </h1>
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
@@ -444,7 +479,7 @@ export default function DepartmentAdminCourses() {
               {department.code} · {department.name}
             </div>
             <div className="mt-0.5">
-              {department.years_of_study} years ·{" "}
+              {displayedYearsOfStudy} years ·{" "}
               {department.semesters_per_year} semesters/year
             </div>
           </div>
@@ -452,8 +487,8 @@ export default function DepartmentAdminCourses() {
       </div>
 
       {/* Year chips */}
-      <div className="flex flex-wrap gap-2">
-        {years.map((y) => {
+      <div className="flex flex-wrap items-center gap-2">
+        {visibleYears.map((y) => {
           const active = selectedYear === y;
           return (
             <button
@@ -470,6 +505,13 @@ export default function DepartmentAdminCourses() {
             </button>
           );
         })}
+        <div className="ml-auto min-w-[170px]">
+          <FancySelect
+            value={selectedDegreeTrack}
+            onChange={(v) => setSelectedDegreeTrack(String(v))}
+            options={degreeTrackOptions}
+          />
+        </div>
       </div>
                   {/* Diagram button */}
       <div className="flex justify-end">
@@ -498,7 +540,7 @@ export default function DepartmentAdminCourses() {
               <BookOpen className="h-5 w-5 text-emerald-600" />
               <div>
                 <div className="text-sm font-semibold text-slate-900">
-                  Courses · {yearLabel(selectedYear || 1)}
+                  Courses · {yearLabel(selectedYear || 1)} · {selectedDegreeTrack}
                 </div>
                 <div className="text-xs text-slate-500">
                   Click a course to view details on the right.
@@ -547,7 +589,7 @@ export default function DepartmentAdminCourses() {
                         {c.code} · {c.name}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        {c.credits} credits · catalog order
+                        {c.credits} credits · {c.degree_track || selectedDegreeTrack}
                       </div>
                     </div>
                   </div>
@@ -605,6 +647,10 @@ export default function DepartmentAdminCourses() {
                 <p>
                   <span className="font-semibold">Credits:</span>{" "}
                   {selectedCourse.credits}
+                </p>
+                <p>
+                  <span className="font-semibold">Degree Track:</span>{" "}
+                  {selectedCourse.degree_track || "BSC"}
                 </p>
                 {selectedCourse.description && (
                   <p>

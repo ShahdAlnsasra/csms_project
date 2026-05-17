@@ -20,6 +20,7 @@ import {
 export default function LecturerCourses() {
   const [search, setSearch] = useState("");
   const [year, setYear] = useState("all");
+  const [degreeTrack, setDegreeTrack] = useState("all");
   const [years, setYears] = useState([]);
   const [courses, setCourses] = useState([]);
   const [terms, setTerms] = useState([]);
@@ -75,15 +76,34 @@ export default function LecturerCourses() {
           c.name.toLowerCase().includes(search.toLowerCase()) ||
           String(c.code).toLowerCase().includes(search.toLowerCase());
         const matchesYear = year === "all" || c.year === Number(year);
-        return matchesSearch && matchesYear;
+        const matchesDegree =
+          degreeTrack === "all" || (c.degree_track || "").toUpperCase() === degreeTrack;
+        return matchesSearch && matchesYear && matchesDegree;
       }),
-    [courses, search, year]
+    [courses, search, year, degreeTrack]
   );
   const yearOptions = [
     { value: "all", label: "Year" },
     ...years.map((y) => ({ value: String(y), label: `Year ${y}` })),
   ];
+  const degreeOptions = [
+    { value: "all", label: "All Degrees" },
+    { value: "BSC", label: "B.Sc." },
+    { value: "MSC", label: "M.Sc." },
+  ];
   const shortTerms = useMemo(() => (Array.isArray(terms) ? terms.slice(0, 10) : []), [terms]);
+  const courseById = useMemo(() => {
+    const map = new Map();
+    courses.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [courses]);
+  const displayedOfferingCourses = useMemo(() => {
+    if (degreeTrack === "all") return offeringCourses;
+    return offeringCourses.filter((c) => {
+      const full = courseById.get(c.id);
+      return (full?.degree_track || "").toUpperCase() === degreeTrack;
+    });
+  }, [offeringCourses, degreeTrack, courseById]);
 
   const termOptions = shortTerms.map((t) => ({
     value: String(t.id),
@@ -148,7 +168,7 @@ export default function LecturerCourses() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 md:p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_minmax(0,11rem)] gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_minmax(0,11rem)_minmax(0,11rem)] gap-3 items-end">
           <div className="relative min-w-0">
             <MagnifyingGlassIcon className="h-5 w-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -168,6 +188,18 @@ export default function LecturerCourses() {
                 options={yearOptions}
                 compact
                 placeholder="Catalog year"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-2 py-1.5 bg-slate-50/60 min-w-0">
+            <FunnelIcon className="h-4 w-4 text-slate-400 shrink-0 hidden sm:block" />
+            <div className="min-w-0 flex-1">
+              <FancySelect
+                value={degreeTrack}
+                onChange={(v) => setDegreeTrack(String(v))}
+                options={degreeOptions}
+                compact
+                placeholder="Degree"
               />
             </div>
           </div>
@@ -193,11 +225,11 @@ export default function LecturerCourses() {
           </p>
         </div>
 
-        {offeringCourses.length > 0 && (
+        {displayedOfferingCourses.length > 0 && (
           <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
             <p className="text-xs font-semibold text-indigo-700 mb-2">Assigned in selected term</p>
             <div className="flex flex-wrap gap-2">
-              {offeringCourses.map((c) => (
+              {displayedOfferingCourses.map((c) => (
                 <span key={`o-${c.id}`} className="rounded-full bg-white border border-indigo-200 px-2.5 py-1 text-xs text-slate-700">
                   {c.code} · {c.name}
                 </span>
@@ -217,6 +249,17 @@ export default function LecturerCourses() {
               <div className="space-y-1">
                 <div className="text-sm font-semibold text-slate-900">
                   {course.name} • {course.code}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-semibold text-indigo-700">
+                    {(course.degree_track || "BSC").toUpperCase()}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600">
+                    Year {course.year} · Sem {course.semester}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                    {course.planning_type === "ELECTIVE" ? "Elective" : "Mandatory"}
+                  </span>
                 </div>
                 <div className="text-xs text-slate-500">
                   {course.latest_syllabus?.updated_at

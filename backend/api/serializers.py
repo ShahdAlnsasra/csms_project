@@ -181,15 +181,17 @@ class CourseSerializer(serializers.ModelSerializer):
 
     # ---------- display helpers ----------
     def get_lecturers_display(self, obj):
-        """Lecturers assigned on the current academic term offering (if any)."""
-        term = get_current_term()
-        if not term:
-            return []
-        off = (
-            CourseOffering.objects.filter(course=obj, term=term)
-            .prefetch_related("lecturers")
-            .first()
-        )
+        """Lecturers assigned on selected term (fallback: current term)."""
+        term_id = self.context.get("term_id")
+        off_qs = CourseOffering.objects.filter(course=obj).prefetch_related("lecturers")
+        if term_id:
+            off_qs = off_qs.filter(term_id=term_id)
+        else:
+            term = get_current_term()
+            if not term:
+                return []
+            off_qs = off_qs.filter(term=term)
+        off = off_qs.first()
         if not off:
             return []
         result = []

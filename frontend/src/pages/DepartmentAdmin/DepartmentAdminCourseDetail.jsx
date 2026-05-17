@@ -347,6 +347,7 @@ import {
   fetchDepartmentDetail,
   fetchCourseAIInsights,
   downloadDeptCourseSyllabusPdf,
+  fetchNextTerm,
 } from "../../api/api";
 import {
   ArrowLeft,
@@ -365,6 +366,7 @@ export default function DepartmentAdminCourseDetail() {
   const [departmentId, setDepartmentId] = useState(null);
   const [department, setDepartment] = useState(null);
   const [courses, setCourses] = useState([]);
+  const [targetTermId, setTargetTermId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -408,9 +410,18 @@ export default function DepartmentAdminCourseDetail() {
       try {
         setLoading(true);
         setError("");
+        let nextTermId = null;
+        try {
+          const next = await fetchNextTerm();
+          nextTermId = next?.id || null;
+          setTargetTermId(nextTermId);
+        } catch {
+          setTargetTermId(null);
+        }
+
         const [dept, allCourses] = await Promise.all([
           fetchDepartmentDetail(departmentId),
-          fetchDeptCourses({ departmentId }),
+          fetchDeptCourses({ departmentId, termId: nextTermId || undefined }),
         ]);
         setDepartment(dept || null);
         setCourses(allCourses || []);
@@ -571,6 +582,9 @@ export default function DepartmentAdminCourseDetail() {
             <p className="mt-1 text-sm text-slate-600 max-w-xl">
               Detailed view of the selected course, its prerequisites and the
               courses that depend on it.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Lecturers shown for {targetTermId ? "next semester assignments" : "current term"}.
             </p>
           </div>
         </div>

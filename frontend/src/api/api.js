@@ -227,13 +227,14 @@ export async function decideOnDeptSignupRequest(requestId, decision, reason) {
 
 
 // ===== Department Admin – Courses =====
-export async function fetchDeptCourses({ departmentId, year, degreeTrack, planningType }) {
+export async function fetchDeptCourses({ departmentId, year, degreeTrack, planningType, termId }) {
   if (!departmentId) return [];
 
   const params = { department_id: departmentId };
   if (year) params.year = year;
   if (degreeTrack) params.degree_track = degreeTrack;
   if (planningType) params.planning_type = planningType;
+  if (termId) params.term_id = termId;
 
   const res = await API.get("department-admin/courses/", { params });
   return res.data || [];

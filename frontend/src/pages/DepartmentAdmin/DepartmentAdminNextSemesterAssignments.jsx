@@ -56,6 +56,7 @@ export default function DepartmentAdminNextSemesterAssignments() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [yearFilter, setYearFilter] = useState("");
+  const [degreeTrackFilter, setDegreeTrackFilter] = useState("BSC");
   const [scheduleFilter, setScheduleFilter] = useState("all");
   const [staffSearch, setStaffSearch] = useState("");
   const [editStart, setEditStart] = useState("");
@@ -76,7 +77,10 @@ export default function DepartmentAdminNextSemesterAssignments() {
       try {
         const [termsRes, coursesRes, lecturersRes] = await Promise.all([
           fetchTerms(),
-          fetchDeptCourses({ departmentId }),
+          fetchDeptCourses({
+            departmentId,
+            degreeTrack: degreeTrackFilter,
+          }),
           fetchDeptLecturers(departmentId),
         ]);
         if (cancelled) return;
@@ -120,7 +124,7 @@ export default function DepartmentAdminNextSemesterAssignments() {
     return () => {
       cancelled = true;
     };
-  }, [departmentId, termId]);
+  }, [departmentId, termId, degreeTrackFilter]);
 
   const offeringMap = useMemo(() => {
     const map = new Map();
@@ -176,6 +180,10 @@ export default function DepartmentAdminNextSemesterAssignments() {
     { value: "all", label: "All courses" },
     { value: "scheduled", label: "On this term" },
     { value: "open", label: "Not on this term" },
+  ];
+  const degreeTrackOptions = [
+    { value: "BSC", label: "B.Sc." },
+    { value: "MSC", label: "M.Sc." },
   ];
 
   const filteredBlocks = useMemo(() => {
@@ -343,7 +351,7 @@ export default function DepartmentAdminNextSemesterAssignments() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Academic term
@@ -361,6 +369,18 @@ export default function DepartmentAdminNextSemesterAssignments() {
               value={yearFilter}
               onChange={(v) => setYearFilter(String(v))}
               options={yearFilterOptions}
+            />
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Degree track
+          </label>
+          <div className="mt-2">
+            <FancySelect
+              value={degreeTrackFilter}
+              onChange={(v) => setDegreeTrackFilter(String(v))}
+              options={degreeTrackOptions}
             />
           </div>
         </div>
@@ -458,6 +478,7 @@ export default function DepartmentAdminNextSemesterAssignments() {
                     lecturers={lecturersFiltered}
                     yearBudgetUsed={Number(scheduledCreditsByYear.get(course.year || 1) || 0)}
                     maxYearCredits={MAX_YEAR_TERM_CREDITS}
+                    degreeTrack={degreeTrackFilter}
                     onSave={(ids) => saveOffering(course, ids)}
                     onRemove={() => removeOffering(existing?.id)}
                   />
@@ -479,6 +500,7 @@ function CourseOfferingCard({
   lecturers,
   yearBudgetUsed,
   maxYearCredits,
+  degreeTrack,
   onSave,
   onRemove,
 }) {
@@ -509,7 +531,8 @@ function CourseOfferingCard({
           </p>
           <p className="text-sm font-bold text-slate-900">{course.name}</p>
           <p className="mt-1 text-[11px] text-slate-500">
-            {course.credits} cr. · {course.planning_type === "ELECTIVE" ? "Elective" : "Mandatory"}
+            {course.credits} cr. · {course.planning_type === "ELECTIVE" ? "Elective" : "Mandatory"} ·{" "}
+            {course.degree_track || degreeTrack}
             {!onTerm && (
               <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
                 Not on this term

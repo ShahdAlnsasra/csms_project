@@ -1502,6 +1502,10 @@ class DepartmentAdminCoursesView(APIView):
         year = request.query_params.get("year")
         degree_track = request.query_params.get("degree_track")
         planning_type = request.query_params.get("planning_type")
+        term_id = request.query_params.get("term_id")
+        term_id = request.query_params.get("term_id")
+        term_id = request.query_params.get("term_id")
+        term_id = request.query_params.get("term_id")
 
         if not dept_id:
             return Response(
@@ -1556,6 +1560,7 @@ class DepartmentAdminCourseListCreate(APIView):
         year = request.query_params.get("year")
         degree_track = request.query_params.get("degree_track")
         planning_type = request.query_params.get("planning_type")
+        term_id = request.query_params.get("term_id")
 
         if not dept_id:
             return Response(
@@ -1584,7 +1589,7 @@ class DepartmentAdminCourseListCreate(APIView):
             qs = qs.filter(planning_type=planning_type)
 
         qs = qs.order_by("year", "semester", "code")
-        serializer = CourseSerializer(qs, many=True)
+        serializer = CourseSerializer(qs, many=True, context={"term_id": term_id})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -1948,6 +1953,8 @@ def lecturer_courses(request):
                 "year": course.year,
                 "semester": course.semester,
                 "credits": float(course.credits),
+                "degree_track": course.degree_track,
+                "planning_type": course.planning_type,
                 "department_name": course.department.name if course.department else None,
                 "department_code": course.department.code if course.department else None,
                 "latest_syllabus": SyllabusSerializer(last_syllabus).data if last_syllabus else None,
